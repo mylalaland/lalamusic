@@ -293,7 +293,7 @@ export default function DesktopSettings() {
                   style={{ background: 'linear-gradient(135deg, #99f7ff, #00f1fe)', boxShadow: '0 0 40px rgba(153,247,255,0.15)' }}>
                   <span className="font-['Space_Grotesk'] text-2xl font-bold text-[#004145] italic">S</span>
                 </div>
-                <h3 className="font-['Space_Grotesk'] text-xl font-bold text-[#f1f3fc] tracking-tight">SLOWI</h3>
+                <h3 className="font-['Space_Grotesk'] text-xl font-bold text-[#f1f3fc] tracking-tight">LALA</h3>
                 <p className="font-['Space_Grotesk'] text-[9px] text-[#99f7ff] tracking-[0.3em] mt-1 mb-1">NEURAL_AUDIO v3.0</p>
                 <p className="font-['Inter'] text-[10px] text-[#44484f]">Desktop Edition</p>
                 <button className="mt-6 px-6 py-2 font-['Space_Grotesk'] text-xs tracking-widest text-[#72757d] border border-[#44484f]/50 hover:border-[#99f7ff]/30 hover:text-[#99f7ff] transition uppercase">

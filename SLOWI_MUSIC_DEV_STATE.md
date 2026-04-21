@@ -1,11 +1,11 @@
-# Slowi Music Refactoring - Development State Checkpoint
+# Lala Music Refactoring - Development State Checkpoint
 **Date:** 2026-04-10
 
 > **💡 AI 어시스턴트를 위한 안내 (To AI Assistant):**
 > 내일 또는 다음 작업 세션에 이 프롬프트/파일을 읽게 된다면, 사용자가 이 파일의 내용을 바탕으로 작업을 재개하고자 하는 것입니다. 지금까지 진행된 내용, 아키텍처 변경점, 해결된 버그들을 숙지하고 다음 할 일(Next Steps)을 도출하세요.
 
 ## 🎯 현재까지의 핵심 목표 (The Objective)
-Slowi Music 데스크톱 버전을 완전한 하이엔드 어플리케이션 급으로 끌어올리기 위한 **NEURAL_AUDIO 디자인 시스템 통일 및 대용량 구글 드라이브 라이브러리 성능 최적화**
+Lala Music 데스크톱 버전을 완전한 하이엔드 어플리케이션 급으로 끌어올리기 위한 **NEURAL_AUDIO 디자인 시스템 통일 및 대용량 구글 드라이브 라이브러리 성능 최적화**
 
 ## ✅ 완료된 주요 작업 내역 (Completed Tasks)
 

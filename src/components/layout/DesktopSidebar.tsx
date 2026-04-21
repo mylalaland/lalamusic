@@ -39,7 +39,7 @@ export default function DesktopSidebar() {
             <Icon.Zap size={16} className="text-[#99f7ff]" />
           </div>
           <div className="flex flex-col">
-            <span className="font-['Space_Grotesk'] text-lg font-bold text-[#f1f3fc] tracking-tight group-hover:text-[#99f7ff] transition-colors">SLOWI</span>
+            <span className="font-['Space_Grotesk'] text-lg font-bold text-[#f1f3fc] tracking-tight group-hover:text-[#99f7ff] transition-colors">LALA</span>
             <span className="text-[8px] font-['Space_Grotesk'] text-[#44484f] tracking-[0.3em] -mt-0.5">NEURAL_AUDIO</span>
           </div>
         </Link>

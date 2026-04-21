@@ -115,7 +115,7 @@ export const usePlayerStore = create<PlayerState>()(
       })
     }),
     {
-      name: 'slowi-player-storage',
+      name: 'lala-player-storage',
       // Only persist these specific fields to localStorage
       partialize: (state) => ({ 
         favorites: state.favorites,

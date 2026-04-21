@@ -387,7 +387,7 @@ export default function DesktopPlayer() {
     if (!track || !navigator.mediaSession) return
     const title = track.title || track.name?.replace(/\.(mp3|wav|flac|m4a)$/i, '') || 'Unknown'
     const artist = track.artist || 'Unknown Artist'
-    const album = track.album || 'Slowi Music'
+    const album = track.album || 'Lala Music'
     const artwork: MediaImage[] = []
     let mediaArt = localCoverArt || track.cover_art || track.thumbnailLink || null
     if (typeof mediaArt === 'string' && !mediaArt.includes('[object Object]')) {

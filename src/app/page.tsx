@@ -41,7 +41,7 @@ export default function LoginPage() {
       <div className="text-center space-y-6 max-w-md w-full">
         <div className="space-y-2">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-            Slowi Music
+            Lala Music
           </h1>
           <p className="text-gray-400">나만의 구글 드라이브 뮤직 플레이어</p>
         </div>

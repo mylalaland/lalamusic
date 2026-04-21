@@ -1,7 +1,7 @@
-# Slowi Music Architecture
+# Lala Music Architecture
 
 ## Overview
-**Slowi Music** is a serverless, hybrid web application (Next.js App Router) functioning as a personal music player. It leverages Google Drive as the primary media storage and streams audio client-side.
+**Lala Music** is a serverless, hybrid web application (Next.js App Router) functioning as a personal music player. It leverages Google Drive as the primary media storage and streams audio client-side.
 
 ## Core Tech Stack
 - **Framework:** Next.js (App Router, Server Actions)

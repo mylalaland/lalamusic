@@ -29,7 +29,7 @@ async function getLrcLibLyrics(artist: string, title: string, duration?: number)
     if (duration) params.append('duration', duration.toString())
 
     const res = await fetch(`https://lrclib.net/api/get?${params.toString()}`, {
-      headers: { 'User-Agent': 'SlowiMusic/1.0' }
+      headers: { 'User-Agent': 'LalaMusic/1.0' }
     })
 
     if (!res.ok) return { synced: null, plain: null }

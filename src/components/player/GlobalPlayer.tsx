@@ -365,7 +365,7 @@ export default function GlobalPlayer() {
     if (!track || !navigator.mediaSession) return
     const title = track.title || track.name?.replace(/\.(mp3|wav|flac|m4a)$/i, '') || 'Unknown Title'
     const artist = track.artist || 'Unknown Artist'
-    const album = track.album || 'Slowi Music'
+    const album = track.album || 'Lala Music'
     const artwork: MediaImage[] = []
     let mediaArt = track.cover_art || track.thumbnailLink || null
     if (typeof mediaArt === 'string' && !mediaArt.includes('[object Object]')) {

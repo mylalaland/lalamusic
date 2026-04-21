@@ -87,7 +87,7 @@ export default function SettingsPage() {
     }
 
     // [NEW] 가사 설정 로드
-    const savedLyrics = localStorage.getItem('slowi_lyrics_settings')
+    const savedLyrics = localStorage.getItem('lala_lyrics_settings')
     if (savedLyrics) {
         try {
             const parsed = JSON.parse(savedLyrics)
@@ -272,7 +272,7 @@ export default function SettingsPage() {
   // [NEW] 가사 설정 저장
   const handleSaveLyricsSettings = (newSettings: typeof lyricsSettings) => {
     setLyricsSettings(newSettings)
-    localStorage.setItem('slowi_lyrics_settings', JSON.stringify(newSettings))
+    localStorage.setItem('lala_lyrics_settings', JSON.stringify(newSettings))
     
     // 저장 피드백 (토스트)
     setSaveMessage("설정이 저장되었습니다.")

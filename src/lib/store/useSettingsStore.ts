@@ -36,7 +36,7 @@ export const useSettingsStore = create<SettingsState>()(
       setEnableVisualizer: (enable) => set({ enableVisualizer: enable })
     }),
     {
-      name: 'slowi-settings-storage',
+      name: 'lala-settings-storage',
     }
   )
 )

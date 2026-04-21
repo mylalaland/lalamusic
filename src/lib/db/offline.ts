@@ -1,4 +1,4 @@
-const DB_NAME = 'slowi-music-db';
+const DB_NAME = 'lala-music-db';
 const STORE_NAME = 'offline-files';
 
 // DB 초기화

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Slowi Music',
+  title: 'Lala Music',
   description: 'Personal Google Drive Music Player — NEURAL_AUDIO Experience',
 }
 
