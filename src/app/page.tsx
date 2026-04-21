@@ -75,6 +75,18 @@ export default function LoginPage() {
           )}
           Google 계정으로 로그인
         </button>
+        {/* [DIAGNOSTIC] 환경 변수 로드 상태 표시 */}
+        <div className="pt-8 text-[10px] space-y-1 opacity-20 hover:opacity-100 transition-opacity">
+          <p>System Status Diagnostics</p>
+          <div className="flex justify-center gap-4">
+            <span className={process.env.NEXT_PUBLIC_SUPABASE_URL ? "text-green-500" : "text-red-500"}>
+              URL: {process.env.NEXT_PUBLIC_SUPABASE_URL ? 'OK' : 'MISSING'}
+            </span>
+            <span className={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "text-green-500" : "text-red-500"}>
+              KEY: {process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'OK' : 'MISSING'}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -3,14 +3,29 @@ import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest, userAgent } from 'next/server'
 
 export default async function proxy(request: NextRequest) {
-  const pathname = request.nextUrl.pathname
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  // [DIAGNOSTIC] 환경 변수 상세 로그
+  if (!supabaseUrl || !supabaseKey) {
+    console.error(`🔴 [PROXY DIAGNOSTIC] Env Missing: URL=${!!supabaseUrl}, KEY=${!!supabaseKey}`)
+    console.log(`🟡 [PROXY INFO] Currently running on: ${process.env.NODE_ENV} | VERCEL=${!!process.env.VERCEL}`)
+  } else {
+    // 키의 앞뒤 공백이나 따옴표 포함 여부 체크
+    const hasSpace = supabaseUrl.trim() !== supabaseUrl || supabaseKey.trim() !== supabaseKey
+    const hasQuote = supabaseUrl.includes('"') || supabaseUrl.includes("'") || supabaseKey.includes('"') || supabaseKey.includes("'")
+    
+    if (hasSpace || hasQuote) {
+      console.warn(`⚠️ [PROXY DIAGNOSTIC] Env format issue: SPACE=${hasSpace}, QUOTE=${hasQuote}`)
+    }
+    console.log(`✅ [PROXY DIAGNOSTIC] Env Loaded: URLLen=${supabaseUrl.length}, KEYLen=${supabaseKey.length}`)
+  }
 
   // 1. 디바이스 판별 및 URL Rewrite 준비
   const { device } = userAgent(request)
   const isMobile = device.type === 'mobile' || device.type === 'tablet'
   
+  const pathname = request.nextUrl.pathname
   const shouldRewrite = 
     pathname !== '/' && 
     !pathname.startsWith('/auth') && 
