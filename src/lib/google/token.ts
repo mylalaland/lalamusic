@@ -12,8 +12,8 @@ export async function getValidGoogleToken(userId: string) {
     .single()
 
   if (error || !tokenData) {
-    console.error('Token fetch error:', error)
-    throw new Error('Google Drive 연동이 필요합니다. 다시 로그인해주세요.')
+    console.error('🔴 [TOKEN FETCH ERROR]', error || 'No token data found in user_tokens table')
+    throw new Error('Google Drive 연동 정보(Token)를 찾을 수 없습니다. 다시 로그인해 주세요.')
   }
 
   const now = Date.now()

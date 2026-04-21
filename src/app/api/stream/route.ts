@@ -5,9 +5,9 @@ import { getValidGoogleToken } from '../../../lib/google/token'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const fileId = searchParams.get('id')
-  // [NEW] 다운로드 모드 확인
   const isDownload = searchParams.get('download') === 'true'
-  const fileName = searchParams.get('name') || 'music.mp3' // 다운로드 시 저장될 파일명
+  const fileName = searchParams.get('name') || 'music.mp3'
+  const hintMime = searchParams.get('mimeType') || ''
 
   if (!fileId) return new NextResponse('File ID required', { status: 400 })
 
@@ -39,17 +39,25 @@ export async function GET(req: NextRequest) {
       headers: fetchHeaders
     })
 
-    // 오디오 헤더 설정
+    // 오디오 헤더 및 MIME Type 강제 설정 (FLAC 버퍼링 방지)
+    let contentType = hintMime || response.headers.get('Content-Type') || 'audio/mpeg'
+    if (contentType.includes('flac') || contentType.includes('x-flac')) {
+        contentType = 'audio/flac'
+    } else if (contentType.includes('m4a') || contentType.includes('mp4')) {
+        contentType = 'audio/mp4'
+    }
+
     const headers = new Headers()
-    headers.set('Content-Type', response.headers.get('Content-Type') || 'audio/mpeg')
+    headers.set('Content-Type', contentType)
     headers.set('Cache-Control', 'public, max-age=3600')
     headers.set('Accept-Ranges', 'bytes') // [중요] 이어받기 지원 명시
 
     // [NEW] 다운로드 요청인 경우 강제로 파일 저장 대화상자 띄우기
     if (isDownload) {
-      // 파일명 인코딩 (한글 깨짐 방지)
+      // 파일명 인코딩 (한글 깨짐 방지 및 브라우저 호환성 강화)
+      const safeName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_') // 영문/숫자 외에는 _로 치환한 fallback 이름
       const encodedName = encodeURIComponent(fileName).replace(/['()]/g, escape).replace(/\*/g, '%2A')
-      headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`)
+      headers.set('Content-Disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`)
     }
 
     const contentLength = response.headers.get('Content-Length')
@@ -58,8 +66,31 @@ export async function GET(req: NextRequest) {
     const contentRange = response.headers.get('Content-Range')
     if (contentRange) headers.set('Content-Range', contentRange)
 
-    // [수정] 상태 코드(200 또는 206)와 함께 반환
-    return new NextResponse(response.body, { 
+    // [NEW] 버퍼링 제로를 위한 Web Streams API 래퍼 구현
+    const stream = new ReadableStream({
+      async start(controller) {
+        if (!response.body) {
+          controller.close()
+          return
+        }
+        const reader = response.body.getReader()
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            controller.enqueue(value)
+          }
+        } catch (err) {
+          console.error('Stream playback interrupted:', err)
+          controller.error(err)
+        } finally {
+          reader.releaseLock()
+          controller.close()
+        }
+      }
+    })
+
+    return new NextResponse(stream, { 
       status: response.status,
       headers 
     })

@@ -8,18 +8,32 @@ export default function LoginPage() {
 
   const handleLogin = async () => {
     setLoading(true)
-    const supabase = createClient()
-    
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        scopes: 'https://www.googleapis.com/auth/drive.readonly',
-        redirectTo: `${location.origin}/auth/callback?next=/connect`,
-        queryParams: {
-          access_type: 'offline',
+    try {
+      const supabase = createClient()
+      
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          scopes: 'https://www.googleapis.com/auth/drive.readonly',
+          redirectTo: `${location.origin}/auth/callback?next=/connect`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
-      },
-    })
+      })
+
+      if (error) {
+        console.error('OAuth Error:', error)
+        alert(`로그인 오류: ${error.message}`)
+        setLoading(false)
+      }
+      // 성공 지점이면 자동으로 리다이렉트되므로 setLoading(false)는 필요없지만, 안전을 위해 놔둘 수도 있습니다.
+    } catch (err: any) {
+      console.error('Unhandled Login Error:', err)
+      alert(`예기치 않은 오류: ${err.message}`)
+      setLoading(false)
+    }
   }
 
   return (

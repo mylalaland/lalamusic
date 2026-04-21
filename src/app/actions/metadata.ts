@@ -60,18 +60,28 @@ export async function analyzeMusicMetadata(fileId: string) {
       genre: metadata.common.genre ? metadata.common.genre.join(', ') : null,
       year: metadata.common.year?.toString() || null,
       duration: metadata.format.duration ? Math.round(metadata.format.duration) : 0,
-      lyrics: lyrics,
-      cover_art: coverArt,
+      // Note: lyrics and cover_art are intentionally omitted to avoid bloating Supabase
     }
 
-    const { error } = await supabase
-      .from('music_files')
-      .update(updates)
-      .eq('id', fileId)
+    // DB 업데이트 시도 (실패해도 메타데이터는 반환)
+    try {
+      const { error } = await supabase
+        .from('music_files')
+        .update(updates)
+        .eq('id', fileId)
+      if (error) console.warn(`DB update skipped for ${fileId}:`, error.message)
+    } catch (dbErr: any) {
+      console.warn(`DB update failed for ${fileId}:`, dbErr.message)
+    }
 
-    if (error) throw error
-
-    return { success: true, data: updates }
+    return { 
+        success: true, 
+        data: updates, 
+        heavyMetadata: {
+            lyrics: lyrics,
+            cover_art: coverArt
+        } 
+    }
 
   } catch (error: any) {
     console.error(`Metadata Error (${fileId}):`, error.message)

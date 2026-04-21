@@ -1,42 +1,26 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import GlobalPlayer from "@/components/player/GlobalPlayer";
-import BottomTabBar from "@/components/layout/BottomTabBar";
-import SwipeNavigation from "@/components/layout/SwipeNavigation";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import type { Metadata } from 'next'
+import './globals.css'
 
 export const metadata: Metadata = {
-  title: "Slowi Music",
-  description: "Personal Google Drive Music Player",
-};
+  title: 'Slowi Music',
+  description: 'Personal Google Drive Music Player — NEURAL_AUDIO Experience',
+}
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-white`}
-        suppressHydrationWarning
-      >
-        <SwipeNavigation>
-           {children}
-        </SwipeNavigation>
-        <GlobalPlayer />
-        <BottomTabBar />
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+      </head>
+      <body className="antialiased" style={{ background: '#0a0e14', color: '#f1f3fc' }} suppressHydrationWarning>
+        {children}
       </body>
     </html>
-  );
+  )
 }

@@ -8,6 +8,7 @@ import { analyzeMusicMetadata } from '@/app/actions/metadata'
 import { usePlayerStore } from '@/lib/store/usePlayerStore'
 // [수정] 경로 주의: 실제 프로젝트 구조에 맞춰 import 경로를 확인해주세요. (예: @/store/useAppStore)
 import { useConnectStore } from '@/lib/store/useConnectStore'
+import { useSettingsStore } from '@/lib/store/useSettingsStore'
 import { saveToOffline } from '../../../lib/db/offline'
 import { Folder, Music, Search, Grid, List, X, Sparkles, RefreshCcw, ChevronRight, Home, Play, FileAudio, ArrowLeft, Loader2, Download, CheckCircle2, ListPlus } from 'lucide-react'
 
@@ -53,6 +54,7 @@ export default function ConnectPage() {
   const [downloadProgress, setDownloadProgress] = useState(0) // [NEW] 다운로드 진행률 (0~100)
 
   const { setTrack, setPlaylist, playlist } = usePlayerStore()
+  const { aiProvider, aiApiKeys } = useSettingsStore()
 
   // 현재 폴더 (경로의 마지막)
   const currentFolder = path.length > 0 ? path[path.length - 1] : { id: 'root', name: 'Google Drive' }
@@ -159,7 +161,7 @@ export default function ConnectPage() {
 
     setIsAiProcessing(true)
     try {
-        const result = await recommendMusic(searchQuery, audioFiles)
+        const result = await recommendMusic(searchQuery, audioFiles, aiApiKeys[aiProvider], aiProvider)
         if (result.songs && result.songs.length > 0) {
             setItems(result.songs)
             setIsAiFiltered(true)
@@ -211,10 +213,10 @@ export default function ConnectPage() {
         let metadata: { lyrics: string | null, cover_art: string | null } = { lyrics: null, cover_art: null }
         try {
             const metaRes = await analyzeMusicMetadata(item.id)
-            if (metaRes.success && metaRes.data) {
+            if (metaRes.success && metaRes.heavyMetadata) {
                 metadata = { 
-                    lyrics: metaRes.data.lyrics, 
-                    cover_art: metaRes.data.cover_art 
+                    lyrics: metaRes.heavyMetadata.lyrics, 
+                    cover_art: metaRes.heavyMetadata.cover_art 
                 }
             }
         } catch (e) {

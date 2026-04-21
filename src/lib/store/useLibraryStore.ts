@@ -2,12 +2,13 @@ import { create } from 'zustand'
 
 interface LibraryState {
   // Navigation & View State
-  currentView: 'menu' | 'tracks' | 'playlists' | 'foldermap' | 'folder_detail'
+  currentView: 'menu' | 'tracks' | 'playlists' | 'foldermap' | 'folder_detail' | 'bookmarks'
   
   // Data State
   tracks: any[]
   playlists: any[]
   folders: any[]
+  bookmarks: any[]
   totalCount: number
   
   // Settings State
@@ -42,6 +43,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   tracks: [],
   playlists: [],
   folders: [],
+  bookmarks: [],
   totalCount: 0,
   baseFolderId: null,
   
@@ -78,6 +80,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
     tracks: [],
     playlists: [],
     folders: [],
+    bookmarks: [],
     searchQuery: '',
     isAiMode: false,
     selectedFolderIds: []

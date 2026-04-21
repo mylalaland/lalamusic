@@ -3,45 +3,54 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ListMusic, Library, Globe, Settings, FolderClosed } from 'lucide-react'
-import { cn } from '@/lib/utils'
+
+const Icon = {
+  ListMusic: ListMusic as any, Library: Library as any,
+  Globe: Globe as any, Settings: Settings as any, FolderClosed: FolderClosed as any
+}
 
 export default function BottomTabBar() {
   const pathname = usePathname()
 
   const tabs = [
-    { name: 'Lists', href: '/lists', icon: ListMusic },
-    { name: 'Library', href: '/library', icon: Library },
-    { name: 'Connect', href: '/connect', icon: Globe }, // 여기가 메인(구글 드라이브)
-    { name: 'Files', href: '/files', icon: FolderClosed },
-    { name: 'Settings', href: '/settings', icon: Settings },
+    { name: 'LISTS', href: '/lists', icon: Icon.ListMusic },
+    { name: 'LIBRARY', href: '/library', icon: Icon.Library },
+    { name: 'CONNECT', href: '/connect', icon: Icon.Globe },
+    { name: 'FILES', href: '/files', icon: Icon.FolderClosed },
+    { name: 'CONFIG', href: '/settings', icon: Icon.Settings },
   ]
 
   return (
-    <div className="flex-none h-[85px] bg-black/95 backdrop-blur-lg border-t border-white/10 pb-5 z-50">
+    <div 
+      className="flex-none h-[85px] pb-5 z-50"
+      style={{ 
+        background: 'rgba(7, 9, 13, 0.95)', 
+        backdropFilter: 'blur(20px)',
+        borderTop: '1px solid rgba(153, 247, 255, 0.08)' 
+      }}
+    >
       <div className="flex justify-around items-center h-full px-2">
         {tabs.map((tab) => {
-          const Icon = tab.icon as any
-          // 현재 경로가 탭의 href와 시작 부분이 일치하면 활성화 (예: /connect/folder/123 -> Connect 활성화)
+          const TabIcon = tab.icon
           const isActive = pathname.startsWith(tab.href)
           
           return (
             <Link 
               key={tab.name} 
               href={tab.href}
-              className="flex flex-col items-center justify-center w-full h-full space-y-1 active:scale-95 transition-transform"
+              className="flex flex-col items-center justify-center w-full h-full space-y-1 active:scale-95 transition-transform relative"
             >
-              <Icon 
-                size={26} 
-                strokeWidth={2}
-                className={cn(
-                  "transition-colors duration-200",
-                  isActive ? "text-[#3B82F6]" : "text-gray-500" // 활성화되면 파란색(Evermusic 컬러)
-                )} 
+              {/* Active top indicator */}
+              {isActive && (
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-[2px] bg-[#99f7ff]" style={{ boxShadow: '0 0 10px rgba(153,247,255,0.6)' }} />
+              )}
+              <TabIcon 
+                size={22} 
+                strokeWidth={1.5}
+                className={`transition-colors duration-200 ${isActive ? 'text-[#99f7ff]' : 'text-[#44484f]'}`}
+                style={isActive ? { filter: 'drop-shadow(0 0 6px rgba(153,247,255,0.5))' } : undefined}
               />
-              <span className={cn(
-                "text-[10px] font-medium tracking-wide",
-                isActive ? "text-[#3B82F6]" : "text-gray-500"
-              )}>
+              <span className={`text-[9px] font-['Space_Grotesk'] tracking-[0.15em] font-medium ${isActive ? 'text-[#99f7ff]' : 'text-[#44484f]'}`}>
                 {tab.name}
               </span>
             </Link>

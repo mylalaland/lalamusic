@@ -4,6 +4,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+   NEURAL_AUDIO DESIGN SYSTEM
+   Slowi Music — Cyberpunk/HUD Aesthetic
+   ============================================================ */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -49,72 +54,97 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* NEURAL_AUDIO Color Palette */
+  --na-bg-deep: #07090d;
+  --na-bg-main: #0a0e14;
+  --na-bg-surface: #0f141a;
+  --na-bg-elevated: #151a21;
+  --na-bg-panel: #1b2028;
+
+  --na-primary: #99f7ff;
+  --na-primary-dim: #5ce0eb;
+  --na-primary-bright: #00f1fe;
+  --na-secondary: #ff59e3;
+  --na-accent: #b38aff;
+
+  --na-text-primary: #f1f3fc;
+  --na-text-secondary: #a8abb3;
+  --na-text-muted: #72757d;
+  --na-text-dim: #44484f;
+
+  --na-border: rgba(153, 247, 255, 0.10);
+  --na-border-strong: rgba(153, 247, 255, 0.20);
+  --na-glow: 0 0 20px rgba(153, 247, 255, 0.3);
+  --na-glow-strong: 0 0 40px rgba(153, 247, 255, 0.5);
+
+  /* ShadCN Overrides for dark-only mode */
+  --background: #0a0e14;
+  --foreground: #f1f3fc;
+  --card: #0f141a;
+  --card-foreground: #f1f3fc;
+  --popover: #151a21;
+  --popover-foreground: #f1f3fc;
+  --primary: #99f7ff;
+  --primary-foreground: #004145;
+  --secondary: #1b2028;
+  --secondary-foreground: #a8abb3;
+  --muted: #151a21;
+  --muted-foreground: #72757d;
+  --accent: #1b2028;
+  --accent-foreground: #99f7ff;
+  --destructive: #ff4f5a;
+  --border: rgba(153, 247, 255, 0.10);
+  --input: rgba(153, 247, 255, 0.08);
+  --ring: #99f7ff;
+  --chart-1: #99f7ff;
+  --chart-2: #ff59e3;
+  --chart-3: #b38aff;
+  --chart-4: #5ce0eb;
+  --chart-5: #00f1fe;
+  --radius: 0rem; /* NEURAL_AUDIO: sharp corners */
+  --sidebar: #07090d;
+  --sidebar-foreground: #f1f3fc;
+  --sidebar-primary: #99f7ff;
+  --sidebar-primary-foreground: #004145;
+  --sidebar-accent: #0f141a;
+  --sidebar-accent-foreground: #99f7ff;
+  --sidebar-border: rgba(153, 247, 255, 0.10);
+  --sidebar-ring: #99f7ff;
 }
 
+/* Force dark mode always */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #0a0e14;
+  --foreground: #f1f3fc;
+  --card: #0f141a;
+  --card-foreground: #f1f3fc;
+  --popover: #151a21;
+  --popover-foreground: #f1f3fc;
+  --primary: #99f7ff;
+  --primary-foreground: #004145;
+  --secondary: #1b2028;
+  --secondary-foreground: #a8abb3;
+  --muted: #151a21;
+  --muted-foreground: #72757d;
+  --accent: #1b2028;
+  --accent-foreground: #99f7ff;
+  --destructive: #ff4f5a;
+  --border: rgba(153, 247, 255, 0.10);
+  --input: rgba(153, 247, 255, 0.08);
+  --ring: #99f7ff;
+  --chart-1: #99f7ff;
+  --chart-2: #ff59e3;
+  --chart-3: #b38aff;
+  --chart-4: #5ce0eb;
+  --chart-5: #00f1fe;
+  --sidebar: #07090d;
+  --sidebar-foreground: #f1f3fc;
+  --sidebar-primary: #99f7ff;
+  --sidebar-primary-foreground: #004145;
+  --sidebar-accent: #0f141a;
+  --sidebar-accent-foreground: #99f7ff;
+  --sidebar-border: rgba(153, 247, 255, 0.10);
+  --sidebar-ring: #99f7ff;
 }
 
 @layer base {
@@ -123,8 +153,93 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', 'Pretendard', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   html {
     @apply font-sans;
+    scroll-behavior: smooth;
+  }
+}
+
+/* NEURAL_AUDIO Utility Classes */
+@layer utilities {
+  .na-glass {
+    background: rgba(10, 14, 20, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--na-border);
+  }
+
+  .na-glass-strong {
+    background: rgba(15, 20, 26, 0.92);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border: 1px solid var(--na-border-strong);
+  }
+
+  .na-glow {
+    box-shadow: var(--na-glow);
+  }
+
+  .na-glow-strong {
+    box-shadow: var(--na-glow-strong);
+  }
+
+  .na-text-glow {
+    text-shadow: 0 0 20px rgba(153, 247, 255, 0.5);
+  }
+
+  .na-label {
+    font-family: 'Space Grotesk', monospace;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--na-primary);
+  }
+
+  .na-border-primary {
+    border-color: var(--na-border-strong);
+  }
+
+  .na-dot-grid {
+    background-image: radial-gradient(var(--na-primary) 0.4px, transparent 0.4px);
+    background-size: 20px 20px;
+    opacity: 0.03;
+  }
+
+  /* Scrollbar styling */
+  .na-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .na-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .na-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--na-border-strong);
+  }
+
+  /* Range input NEURAL_AUDIO styling */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--na-primary);
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(153, 247, 255, 0.6);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: var(--na-primary);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 10px rgba(153, 247, 255, 0.6);
   }
 }

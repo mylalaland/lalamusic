@@ -12,6 +12,8 @@ import {
   saveExtensionSettings, resetMusicLibrary, resetPlaylists 
 } from '@/app/actions/settings'
 import { getDriveFolders, getSharedFolders } from '@/app/actions/library'
+import { useSettingsStore, type AIProvider } from '@/lib/store/useSettingsStore'
+import { Wand2, Key } from 'lucide-react'
 
 const Icon = {
   LogOut: LogOut as any,
@@ -64,6 +66,14 @@ export default function SettingsPage() {
     order: ['synced', 'alsong', 'lrclib', 'unsynced'] 
   })
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+
+  // AI 상태
+  const { aiProvider, aiApiKeys, setAiProvider, setAiApiKey } = useSettingsStore()
+  const [apiKeyInput, setApiKeyInput] = useState('')
+
+  useEffect(() => {
+    setApiKeyInput(aiApiKeys[aiProvider] || '')
+  }, [aiProvider, aiApiKeys])
 
   // 1. 초기 설정 로드
   useEffect(() => {
@@ -408,6 +418,164 @@ export default function SettingsPage() {
                     <button onClick={() => handleSaveLyricsSettings({...lyricsSettings, autoSearch: !lyricsSettings.autoSearch})} className={`w-12 h-6 rounded-full relative transition ${lyricsSettings.autoSearch ? 'bg-green-500' : 'bg-gray-700'}`}>
                         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${lyricsSettings.autoSearch ? 'left-7' : 'left-1'}`} />
                     </button>
+                </div>
+            </div>
+          </div>
+        </section>
+
+        {/* AI Configuration Section */}
+        <section className="bg-gray-900/50 rounded-2xl p-6 border border-gray-800">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-gray-200">
+            <Wand2 size={20} className="text-blue-400" /> AI Settings
+          </h2>
+          
+          <div className="space-y-4">
+            <div className="bg-black/40 p-4 rounded-xl space-y-4 border border-white/5">
+                <div>
+                   <p className="text-sm text-gray-400 font-medium mb-3">AI Model Provider</p>
+                   <div className="flex bg-gray-800/50 rounded-lg p-1">
+                      {(['gemini', 'openai', 'claude'] as AIProvider[]).map(provider => (
+                        <button 
+                          key={provider}
+                          onClick={() => setAiProvider(provider)}
+                          className={`flex-1 py-2 text-xs font-bold rounded-md capitalize transition ${aiProvider === provider ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        >
+                          {provider}
+                        </button>
+                      ))}
+                   </div>
+                </div>
+                
+                <div>
+                  <p className="text-sm text-gray-400 font-medium mb-3 capitalize">{aiProvider} API Key</p>
+                  <div className="relative mb-3">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Key size={14} className="text-gray-500" />
+                      </div>
+                      <input 
+                        type="password"
+                        value={apiKeyInput}
+                        onChange={(e) => setApiKeyInput(e.target.value)}
+                        placeholder={`Enter API Key...`}
+                        className="w-full bg-gray-800/50 border border-gray-700 rounded-lg py-3 pl-9 pr-4 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-blue-500 transition"
+                      />
+                  </div>
+                  <button 
+                    onClick={() => {
+                        setAiApiKey(aiProvider, apiKeyInput)
+                        setSaveMessage("AI 설정이 저장되었습니다.")
+                        setTimeout(() => setSaveMessage(null), 2000)
+                    }}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition"
+                  >
+                    <Icon.Save size={16} />
+                    저장하기
+                  </button>
+
+                  {/* 🟢 Provider-specific API Key Guide */}
+                  <div className="mt-4 bg-gray-800/30 rounded-xl p-4 border border-white/5">
+                    <p className="text-xs text-blue-400 font-bold mb-3 flex items-center gap-2">
+                      💡 API 키 발급 방법
+                    </p>
+                    
+                    {aiProvider === 'gemini' && (
+                      <div className="space-y-2.5">
+                        <div className="flex gap-2.5 items-start">
+                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">1</span>
+                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer"
+                              className="text-blue-400 underline underline-offset-2">
+                              Google AI Studio
+                            </a>에 접속 (가입 및 프로젝트 만들기 필요)
+                          </p>
+                        </div>
+                        <div className="flex gap-2.5 items-start">
+                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">2</span>
+                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                            <strong className="text-white">"Create API Key"</strong> 클릭
+                          </p>
+                        </div>
+                        <div className="flex gap-2.5 items-start">
+                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">3</span>
+                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                            생성된 키를 복사해서 위에 붙여넣기
+                          </p>
+                        </div>
+                        <div className="bg-green-500/10 rounded-lg p-2.5 mt-1 border border-green-500/20">
+                          <p className="text-[11px] text-gray-400 leading-relaxed">
+                            ✨ <strong className="text-green-400">추천!</strong> Gemini는 무료 사용량이 넉넉해서 개인용으로 좋아요.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {aiProvider === 'openai' && (
+                      <div className="space-y-2.5">
+                        <div className="flex gap-2.5 items-start">
+                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">1</span>
+                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer"
+                              className="text-blue-400 underline underline-offset-2">
+                              OpenAI Platform
+                            </a>에 접속 (가입 후 프로젝트 생성 & 결제수단 등록 필요)
+                          </p>
+                        </div>
+                        <div className="flex gap-2.5 items-start">
+                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">2</span>
+                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                            <strong className="text-white">"+ Create new secret key"</strong> 클릭
+                          </p>
+                        </div>
+                        <div className="flex gap-2.5 items-start">
+                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">3</span>
+                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                            <strong className="text-white">sk-</strong>로 시작하는 키를 복사해서 위에 붙여넣기
+                          </p>
+                        </div>
+                        <div className="bg-yellow-500/10 rounded-lg p-2.5 mt-1 border border-yellow-500/20">
+                          <p className="text-[11px] text-gray-400 leading-relaxed">
+                            ⚡ 사용량에 따라 과금됩니다. <strong className="text-yellow-400">월 $5 이내</strong>로 충분해요.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {aiProvider === 'claude' && (
+                      <div className="space-y-2.5">
+                        <div className="flex gap-2.5 items-start">
+                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">1</span>
+                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer"
+                              className="text-blue-400 underline underline-offset-2">
+                              Anthropic Console
+                            </a>에 접속 (가입 후 프로젝트 생성 필요)
+                          </p>
+                        </div>
+                        <div className="flex gap-2.5 items-start">
+                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">2</span>
+                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                            <strong className="text-white">"Create Key"</strong> 클릭
+                          </p>
+                        </div>
+                        <div className="flex gap-2.5 items-start">
+                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">3</span>
+                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                            <strong className="text-white">sk-ant-</strong>로 시작하는 키를 복사해서 위에 붙여넣기
+                          </p>
+                        </div>
+                        <div className="bg-yellow-500/10 rounded-lg p-2.5 mt-1 border border-yellow-500/20">
+                          <p className="text-[11px] text-gray-400 leading-relaxed">
+                            ⚡ 사용량에 따라 과금됩니다. <strong className="text-yellow-400">월 $5 이내</strong>로 충분해요.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-gray-500 mt-3 leading-relaxed flex items-start gap-1.5">
+                    <span>🔒</span>
+                    API 키는 브라우저 로컬 저장소에만 보관되며, 선택한 AI 서비스에만 직접 전송됩니다. 서버에 저장되지 않습니다.
+                  </p>
                 </div>
             </div>
           </div>

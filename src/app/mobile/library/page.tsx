@@ -8,10 +8,13 @@ import { getScanSettings } from '@/app/actions/settings'
 import { searchLibraryWithAI } from '@/app/actions/ai'
 import { usePlayerStore } from '@/lib/store/usePlayerStore'
 import { useLibraryStore } from '@/lib/store/useLibraryStore'
+import { useSettingsStore } from '@/lib/store/useSettingsStore'
 import { 
   RefreshCw, Music, Loader2, Plus, ListMusic, Trash2, ArrowLeft, Sparkles, 
-  ChevronRight, Folder, ChevronDown, Map, Shuffle, Play, FileMusic, X, Calendar, ArrowUpNarrowWide, ArrowDownWideNarrow, CheckSquare, Square
+  ChevronRight, Folder, ChevronDown, Map, Shuffle, Play, FileMusic, X, Calendar, ArrowUpNarrowWide, ArrowDownWideNarrow, CheckSquare, Square, Bookmark
 } from 'lucide-react'
+import FolderTreeItem from '@/components/shared/FolderTreeItem'
+import TrackItem from '@/components/shared/TrackItem'
 
 const Icon = {
   RefreshCw: RefreshCw as any,
@@ -34,75 +37,15 @@ const Icon = {
   ArrowUpNarrowWide: ArrowUpNarrowWide as any,
   ArrowDownWideNarrow: ArrowDownWideNarrow as any,
   CheckSquare: CheckSquare as any,
-  Square: Square as any
+  Square: Square as any,
+  Bookmark: Bookmark as any
 }
 
-// --- [개선된 서브 컴포넌트] 폴더 트리 아이템 (체크박스 & 계층선 추가) ---
-const FolderTreeItem = ({ 
-    node, level, allFolders, selectedIds, onSelect, onToggleSelect 
-}: { 
-    node: any, level: number, allFolders: any[], selectedIds: string[], 
-    onSelect: (node: any) => void, onToggleSelect: (id: string) => void 
-}) => {
-  const [isOpen, setIsOpen] = useState(false) // 기본적으로 닫아둠 (깔끔하게 보이기 위해)
-  const children = allFolders.filter(f => f.parent_id === node.id)
-  const hasChildren = children.length > 0
-  const isSelected = selectedIds.includes(node.id)
-
-  return (
-    <div className="select-none relative">
-      {/* 🟢 계층 가이드라인 (트리 구조 시각화) */}
-      {level > 0 && (
-          <>
-            {/* 세로선 (부모로부터 내려오는 선) */}
-            <div className="absolute top-0 bottom-0 border-l border-gray-700" 
-                 style={{ left: `${(level - 1) * 24 + 12}px` }} />
-            {/* 가로선 (현재 아이템으로 꺾이는 선) */}
-            <div className="absolute top-3 w-3 border-t border-gray-700" 
-                 style={{ left: `${(level - 1) * 24 + 12}px` }} />
-          </>
-      )}
-
-      <div 
-        className={`flex items-center gap-2 p-1.5 hover:bg-gray-800/80 rounded-lg transition-colors group relative ${isSelected ? 'bg-blue-900/30' : ''}`}
-        style={{ paddingLeft: `${level * 24 + (level > 0 ? 8 : 0)}px` }}
-      >
-        {/* 확장/축소 버튼 */}
-        <div onClick={(e) => { e.stopPropagation(); hasChildren && setIsOpen(!isOpen); }} className="p-0.5 cursor-pointer z-10 w-5 h-5 flex items-center justify-center">
-            {hasChildren ? (
-                isOpen ? <Icon.ChevronDown size={14} className="text-gray-400"/> : <Icon.ChevronRight size={14} className="text-gray-400"/>
-            ) : ( <div className="w-3.5" /> )}
-        </div>
-
-        {/* 🟢 체크박스 (다중 선택용) */}
-        <button onClick={(e) => { e.stopPropagation(); onToggleSelect(node.id); }} className="text-gray-500 hover:text-white">
-            {isSelected ? <Icon.CheckSquare size={16} className="text-blue-400" /> : <Icon.Square size={16} />}
-        </button>
-        
-        {/* 폴더 아이콘 및 이름 */}
-        <div className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer" onClick={() => onSelect(node)}>
-            <Icon.Folder size={18} className={children.length > 0 ? "text-blue-400" : "text-yellow-500"} fill="currentColor" fillOpacity={0.2} />
-            <span className={`text-sm truncate ${isSelected ? 'text-blue-200 font-bold' : 'text-gray-300 group-hover:text-white'}`}>
-                {node.name}
-            </span>
-        </div>
-      </div>
-
-      {isOpen && children.map(child => (
-        <FolderTreeItem 
-            key={child.id} node={child} level={level + 1} 
-            allFolders={allFolders} selectedIds={selectedIds}
-            onSelect={onSelect} onToggleSelect={onToggleSelect} 
-        />
-      ))}
-    </div>
-  )
-}
 
 export default function LibraryPage() {
   const { 
     currentView, tracks, totalCount, playlists, folders, baseFolderId,
-    selectedFolder, folderTracks, loading, page, hasMore,
+    selectedFolder, folderTracks, bookmarks, loading, page, hasMore,
     searchQuery, isAiMode, sortBy, sortOrder, selectedPlaylist, playlistTracks, selectedFolderIds, // sortOrder, selectedFolderIds 추가
     setState, toggleFolderSelection 
   } = useLibraryStore()
@@ -115,7 +58,8 @@ export default function LibraryPage() {
   const [showAddToPlaylistModal, setShowAddToPlaylistModal] = useState(false)
   const [trackToAdd, setTrackToAdd] = useState<any>(null)
 
-  const { setTrack, setPlaylist } = usePlayerStore()
+  const { setTrack, setPlaylist, currentTrack, isPlaying } = usePlayerStore()
+  const { aiProvider, aiApiKeys } = useSettingsStore()
 
   useEffect(() => {
     refreshLibraryCount()
@@ -159,7 +103,7 @@ export default function LibraryPage() {
   const loadTracks = async (offsetPage: number, query: string) => {
     setState({ loading: true })
     if (isAiMode && query) {
-      const aiTracks = await searchLibraryWithAI(query)
+      const aiTracks = await searchLibraryWithAI(query, aiApiKeys[aiProvider], aiProvider)
       setState({ tracks: aiTracks, hasMore: false, loading: false })
     } else {
       const limit = 50
@@ -300,12 +244,22 @@ export default function LibraryPage() {
     if (!confirm("메타데이터 분석 시작?")) return
     setAnalyzing(true)
     let processed = 0
-    for (const track of tracks) {
-        if (track.artist) continue;
-        setAnalyzeProgress(`분석 중: ${track.name}...`)
-        await analyzeMusicMetadata(track.id)
-        processed++
+    
+    try {
+        const { saveOfflineMetadata } = await import('@/lib/db/offline')
+        for (const track of tracks) {
+            if (track.artist) continue;
+            setAnalyzeProgress(`분석 중: ${track.name}...`)
+            const result = await analyzeMusicMetadata(track.id)
+            if (result.success && result.heavyMetadata) {
+                 await saveOfflineMetadata(track.id, result.heavyMetadata)
+            }
+            processed++
+        }
+    } catch(e) {
+        console.error(e)
     }
+
     setAnalyzing(false)
     setAnalyzeProgress('')
     alert(`${processed}곡 분석 완료!`)
@@ -345,12 +299,14 @@ export default function LibraryPage() {
                     {currentView === 'menu' ? 'Library' : 
                      currentView === 'foldermap' ? 'Browse Folders' : 
                      currentView === 'folder_detail' ? selectedFolder?.name :
-                     currentView === 'playlists' ? 'Playlists' : 'All Songs'}
+                     currentView === 'playlists' ? 'Playlists' : 
+                     currentView === 'bookmarks' ? 'Bookmarks' : 'All Songs'}
                 </h1>
                 <span className="text-xs text-gray-500">
                     {syncing ? `${syncProgress}곡 처리 중...` : 
                      currentView === 'tracks' ? `Total ${totalCount.toLocaleString()} songs` : 
-                     currentView === 'playlists' ? `${playlists.length} playlists` : 'Music Library'}
+                     currentView === 'playlists' ? `${playlists.length} playlists` : 
+                     currentView === 'bookmarks' ? `${bookmarks.length} saved positions` : 'Music Library'}
                 </span>
             </div>
           </div>
@@ -423,6 +379,7 @@ export default function LibraryPage() {
                 <div onClick={() => { setState({ currentView: 'tracks' }); loadTracks(0, ''); }} className="flex items-center gap-4 p-4 bg-gray-900/50 rounded-xl cursor-pointer hover:bg-gray-800 transition"><div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-400"><Icon.Music size={24} /></div><div className="flex-1"><p className="font-bold text-lg">All Songs</p><p className="text-sm text-gray-500">{totalCount.toLocaleString()} tracks</p></div><Icon.ChevronRight className="text-gray-600" /></div>
                 <div onClick={() => setState({ currentView: 'playlists' })} className="flex items-center gap-4 p-4 bg-gray-900/50 rounded-xl cursor-pointer hover:bg-gray-800 transition"><div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center text-purple-400"><Icon.ListMusic size={24} /></div><div className="flex-1"><p className="font-bold text-lg">Playlists</p><p className="text-sm text-gray-500">{playlists.length} lists</p></div><Icon.ChevronRight className="text-gray-600" /></div>
                 <div onClick={() => { setState({ currentView: 'foldermap' }); loadFolderMap(); }} className="flex items-center gap-4 p-4 bg-gray-900/50 rounded-xl cursor-pointer hover:bg-gray-800 transition"><div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center text-green-400"><Icon.Map size={24} /></div><div className="flex-1"><p className="font-bold text-lg">Browse Folders</p><p className="text-sm text-gray-500">Explore by directory</p></div><Icon.ChevronRight className="text-gray-600" /></div>
+                <div onClick={async () => { setState({ currentView: 'bookmarks', loading: true }); const { getBookmarks } = await import('@/app/actions/bookmarks'); const bms = await getBookmarks(); setState({ bookmarks: bms, loading: false }); }} className="flex items-center gap-4 p-4 bg-gray-900/50 rounded-xl cursor-pointer hover:bg-gray-800 transition"><div className="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center text-yellow-500"><Icon.Bookmark size={24} /></div><div className="flex-1"><p className="font-bold text-lg">Bookmarks</p><p className="text-sm text-gray-500">Saved audio positions</p></div><Icon.ChevronRight className="text-gray-600" /></div>
             </div>
         )}
 
@@ -445,14 +402,17 @@ export default function LibraryPage() {
                     </div>
                 )}
 
-                {tracks.map(track => (
-                    <div key={track.id} onClick={() => { setPlaylist(tracks); setTrack(track); }} className="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl cursor-pointer group">
-                        <div className="w-12 h-12 bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center shrink-0 border border-white/5">
-                            {track.cover_art ? <img src={track.cover_art} className="w-full h-full object-cover"/> : <Icon.Music size={20} className="text-gray-600" />}
-                        </div>
-                        <div className="flex-1 min-w-0"><p className="font-medium truncate text-gray-200">{track.name.replace(/\.(mp3|wav|flac|m4a)$/i, '')}</p><div className="flex items-center gap-2 text-xs text-gray-500 truncate">{track.artist && <span className="text-blue-400">{track.artist}</span>}</div></div>
-                        <button onClick={(e) => { e.stopPropagation(); setTrackToAdd(track); setShowAddToPlaylistModal(true); }} className="p-2 text-gray-500 hover:text-white"><Icon.Plus size={20}/></button>
-                    </div>
+                {tracks.map((track, i) => (
+                    <TrackItem 
+                        key={track.id}
+                        track={track}
+                        index={i}
+                        isActive={currentTrack?.id === track.id}
+                        isPlaying={isPlaying}
+                        variant="mobile"
+                        onPlay={(t) => { setPlaylist(tracks); setTrack(t); }}
+                        onAddPlaylist={(t, e) => { e.stopPropagation(); setTrackToAdd(t); setShowAddToPlaylistModal(true); }}
+                    />
                 ))}
                 {hasMore && !loading && <button onClick={() => loadTracks(page + 1, searchQuery)} className="w-full py-4 text-blue-400 font-bold mt-2">Load More</button>}
             </div>
@@ -480,6 +440,35 @@ export default function LibraryPage() {
                         <button onClick={(e) => handleRemoveTrackFromPlaylist(e, track.id)} className="p-2 text-gray-600 hover:text-red-500 hover:bg-white/10 rounded-full"><Icon.X size={18} /></button>
                     </div>
                 ))}
+            </div>
+        )}
+
+        {currentView === 'bookmarks' && (
+            <div className="pb-10 relative">
+                {loading ? (
+                    <div className="text-center py-20 text-gray-500 animate-pulse"><Icon.Loader2 className="animate-spin mb-2 mx-auto" /></div>
+                ) : bookmarks.length === 0 ? (
+                    <div className="text-center py-20 text-gray-500"><p>북마크된 구간이 없습니다.</p></div>
+                ) : (
+                    <div>
+                    {bookmarks.map(b => {
+                        const track = { ...b.track, initialPosition: b.position };
+                        return (
+                        <div key={b.bookmark_id} onClick={() => { setPlaylist(bookmarks.map(x=>({...x.track, initialPosition: x.position}))); setTrack(track); }} className="flex items-center gap-3 p-3 hover:bg-white/10 rounded-xl cursor-pointer group">
+                            <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center relative overflow-hidden">
+                               {track.cover_art || track.thumbnail_link ? <img src={track.cover_art || track.thumbnail_link} className="w-full h-full object-cover"/> : <Icon.Music size={20} className="text-gray-500"/>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                 <p className="truncate font-medium flex items-center gap-2">
+                                     {track.title || track.name?.replace(/\.(mp3|wav|flac|m4a)$/i, '') || track.file_name?.replace(/\.[^.]+$/, '')}
+                                     <span className="text-xs bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full">{Math.floor(b.position / 60)}:{String(Math.floor(b.position % 60)).padStart(2, '0')}</span>
+                                 </p>
+                                 <p className="text-sm text-gray-400 truncate">{b.bookmark_title || track.artist || 'Unknown'}</p>
+                            </div>
+                        </div>
+                    )})}
+                    </div>
+                )}
             </div>
         )}
 
@@ -528,12 +517,17 @@ export default function LibraryPage() {
                     <button onClick={() => setState({ currentView: 'foldermap' })} className="p-2 bg-gray-800 rounded-full hover:bg-gray-700"><Icon.ArrowLeft/></button>
                     <div className="flex-1 overflow-hidden"><h2 className="text-xl font-bold truncate">{selectedFolder.name}</h2></div>
                 </div>
-                {folderTracks.map(track => (
-                    <div key={track.id} onClick={() => { setPlaylist(folderTracks); setTrack(track); }} className="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl cursor-pointer">
-                        <Icon.Music size={18} className="text-gray-500"/>
-                        <p className="font-medium truncate text-gray-200 flex-1">{track.name}</p>
-                        <button onClick={(e) => { e.stopPropagation(); setTrackToAdd(track); setShowAddToPlaylistModal(true); }} className="p-2 text-gray-500 hover:text-white"><Icon.Plus size={20}/></button>
-                    </div>
+                {folderTracks.map((track, i) => (
+                    <TrackItem 
+                        key={track.id}
+                        track={track}
+                        index={i}
+                        isActive={currentTrack?.id === track.id}
+                        isPlaying={isPlaying}
+                        variant="mobile"
+                        onPlay={(t) => { setPlaylist(folderTracks); setTrack(t); }}
+                        onAddPlaylist={(t, e) => { e.stopPropagation(); setTrackToAdd(t); setShowAddToPlaylistModal(true); }}
+                    />
                 ))}
             </div>
         )}

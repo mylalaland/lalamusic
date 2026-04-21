@@ -39,3 +39,20 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# media & data
+*.mp4
+*.m4a
+*.mp3
+*.wav
+*.flac
+
+# logs
+build_log*.txt
+build_output.txt
+
+# scratch
+scratch/
+_frames/
+_frames_detail/
+*.ate
