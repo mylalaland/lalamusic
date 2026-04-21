@@ -56,3 +56,9 @@ scratch/
 _frames/
 _frames_detail/
 *.ate
+
+# docs to exclude
+*.txt
+ARCHITECTURE.md
+SLOWI_MUSIC_DEV_STATE.md
+.expo/README.md
