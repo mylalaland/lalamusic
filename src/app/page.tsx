@@ -15,7 +15,7 @@ export default function LoginPage() {
         provider: 'google',
         options: {
           scopes: 'https://www.googleapis.com/auth/drive.readonly',
-          redirectTo: `${location.origin}/auth/callback?next=/connect`,
+          redirectTo: `${location.origin}/auth/callback?next=/`,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',

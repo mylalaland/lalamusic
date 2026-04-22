@@ -13,11 +13,11 @@ export default function BottomTabBar() {
   const pathname = usePathname()
 
   const tabs = [
-    { name: 'LISTS', href: '/lists', icon: Icon.ListMusic },
-    { name: 'LIBRARY', href: '/library', icon: Icon.Library },
-    { name: 'CONNECT', href: '/connect', icon: Icon.Globe },
-    { name: 'FILES', href: '/files', icon: Icon.FolderClosed },
-    { name: 'CONFIG', href: '/settings', icon: Icon.Settings },
+    { name: 'LISTS', href: '/mobile/lists', icon: Icon.ListMusic },
+    { name: 'LIBRARY', href: '/mobile/library', icon: Icon.Library },
+    { name: 'CONNECT', href: '/mobile/connect', icon: Icon.Globe },
+    { name: 'FILES', href: '/mobile/files', icon: Icon.FolderClosed },
+    { name: 'CONFIG', href: '/mobile/settings', icon: Icon.Settings },
   ]
 
   return (

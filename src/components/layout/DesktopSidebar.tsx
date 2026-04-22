@@ -13,13 +13,13 @@ const Icon = {
 }
 
 const menuItems = [
-  { name: 'CONNECT',     href: '/connect',   icon: Icon.Globe,        label: '구글 드라이브' },
-  { name: 'FAVORITES',   href: '/favorites', icon: Icon.Heart,        label: '좋아요' },
-  { name: 'RECENTS',     href: '/recents',   icon: Icon.Clock,        label: '최근 재생' },
-  { name: 'LIBRARY',     href: '/library',   icon: Icon.Library,      label: '라이브러리' },
-  { name: 'LISTS',       href: '/lists',     icon: Icon.ListMusic,    label: '플레이리스트' },
-  { name: 'FILES',       href: '/files',     icon: Icon.FolderClosed, label: '오프라인 파일' },
-  { name: 'SETTINGS',    href: '/settings',  icon: Icon.Settings,     label: '설정' },
+  { name: 'CONNECT',     href: '/desktop/connect',   icon: Icon.Globe,        label: '구글 드라이브' },
+  { name: 'FAVORITES',   href: '/desktop/favorites', icon: Icon.Heart,        label: '좋아요' },
+  { name: 'RECENTS',     href: '/desktop/recents',   icon: Icon.Clock,        label: '최근 재생' },
+  { name: 'LIBRARY',     href: '/desktop/library',   icon: Icon.Library,      label: '라이브러리' },
+  { name: 'LISTS',       href: '/desktop/lists',     icon: Icon.ListMusic,    label: '플레이리스트' },
+  { name: 'FILES',       href: '/desktop/files',     icon: Icon.FolderClosed, label: '오프라인 파일' },
+  { name: 'SETTINGS',    href: '/desktop/settings',  icon: Icon.Settings,     label: '설정' },
 ]
 
 export default function DesktopSidebar() {
@@ -34,7 +34,7 @@ export default function DesktopSidebar() {
     <div className="h-full flex flex-col pt-6" style={{ background: '#07090d', borderRight: '1px solid rgba(153,247,255,0.08)' }}>
       {/* Logo */}
       <div className="px-5 mb-8">
-        <Link href="/connect" className="flex items-center gap-3 group">
+        <Link href="/" className="flex items-center gap-3 group">
           <div className="w-8 h-8 flex items-center justify-center border border-[#99f7ff]/30" style={{ background: 'linear-gradient(135deg, rgba(153,247,255,0.15), rgba(0,241,254,0.05))', boxShadow: '0 0 15px rgba(153,247,255,0.15)' }}>
             <Icon.Zap size={16} className="text-[#99f7ff]" />
           </div>

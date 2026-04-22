@@ -34,20 +34,39 @@ export async function updateSession(request: NextRequest) {
   )
 
   // 중요: 여기서 getUser를 호출해야 세션이 갱신됩니다.
-  // user가 없으면 로그인 페이지로 튕겨내는 보안 로직도 여기에 포함됩니다.
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // 로그인 안 된 상태로 보호된 페이지(/library, /connect 등)에 가려고 하면?
+  // 1. 로그인 안 된 상태로 보호된 페이지(/library, /connect 등)에 가려고 하면?
   if (
     !user &&
     !request.nextUrl.pathname.startsWith('/auth') &&
     request.nextUrl.pathname !== '/'
   ) {
-    // 로그인 페이지로 쫓아냄
     const url = request.nextUrl.clone()
     url.pathname = '/'
+    return NextResponse.redirect(url)
+  }
+
+  // 2. 로그인 된 상태에서 루트(/)에 접속하면 메인 앱으로 리다이렉트
+  if (user && request.nextUrl.pathname === '/') {
+    const userAgent = request.headers.get('user-agent') || ''
+    const isMobile = /mobile|android|iphone|ipad|phone/i.test(userAgent)
+    
+    const url = request.nextUrl.clone()
+    url.pathname = isMobile ? '/mobile/connect' : '/desktop/connect'
+    return NextResponse.redirect(url)
+  }
+
+  // 3. /connect, /library 등의 경로가 /mobile/이나 /desktop/ 없이 들어오면 리다이렉트 (하위 호환성)
+  const legacyPaths = ['/connect', '/library', '/lists', '/files', '/settings', '/favorites', '/recents']
+  if (legacyPaths.includes(request.nextUrl.pathname)) {
+    const userAgent = request.headers.get('user-agent') || ''
+    const isMobile = /mobile|android|iphone|ipad|phone/i.test(userAgent)
+    
+    const url = request.nextUrl.clone()
+    url.pathname = (isMobile ? '/mobile' : '/desktop') + request.nextUrl.pathname
     return NextResponse.redirect(url)
   }
 
