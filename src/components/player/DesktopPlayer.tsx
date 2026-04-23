@@ -132,7 +132,7 @@ export default function DesktopPlayer() {
     if (audioRef.current) {
       const newSrc = ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob')))
         ? (track as any).src
-        : `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}`
+        : `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
       
       if (audioRef.current.src.indexOf(track.id) === -1) {
         audioRef.current.crossOrigin = "anonymous"

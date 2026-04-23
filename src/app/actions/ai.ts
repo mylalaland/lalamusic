@@ -10,9 +10,8 @@ export async function recommendMusic(userQuery: string, musicList: any[], apiKey
   try {
     const genAI = new GoogleGenerativeAI(apiKey)
     
-    // ⚠️ 수정됨: 1.5-flash 대신 가장 호환성 높은 'gemini-pro' 사용
-    // (이전 코드에서 사용하던 안정적인 버전입니다)
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' })
+    // ⚠️ 수정됨: 1.5-flash-latest로 통일
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' })
 
     // 데이터 절약: 이름만 추려서 보냄
     const songsText = musicList.map((file, index) => `${index}:${file.name}`).join('\n')

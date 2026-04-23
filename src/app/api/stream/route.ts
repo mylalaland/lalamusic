@@ -39,9 +39,15 @@ export async function GET(req: NextRequest) {
       headers: fetchHeaders
     })
 
-    // 오디오 헤더 및 MIME Type 강제 설정 (FLAC 버퍼링 방지)
+    // 오디오 헤더 및 MIME Type 강제 설정 (FLAC 버퍼링 방지 및 M4A 호환성)
     let contentType = hintMime || response.headers.get('Content-Type') || 'audio/mpeg'
-    if (contentType.includes('flac') || contentType.includes('x-flac')) {
+    const lowerName = fileName.toLowerCase()
+    
+    if (lowerName.endsWith('.flac')) {
+        contentType = 'audio/flac'
+    } else if (lowerName.endsWith('.m4a') || lowerName.endsWith('.mp4')) {
+        contentType = 'audio/mp4'
+    } else if (contentType.includes('flac') || contentType.includes('x-flac')) {
         contentType = 'audio/flac'
     } else if (contentType.includes('m4a') || contentType.includes('mp4')) {
         contentType = 'audio/mp4'
