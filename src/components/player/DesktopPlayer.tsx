@@ -429,7 +429,7 @@ export default function DesktopPlayer() {
   const validDuration = (duration && isFinite(duration) && duration > 0) ? duration : ((track as any)?.duration || 0)
   const progressPercent = (currentTime / (validDuration || 1)) * 100
   const hasLyrics = displayLyrics && displayLyrics.length > 0
-  const audioFormat = getFormatFromMime(track?.mimeType, track?.name || track?.title)
+  const audioFormat = getFormatFromMime(track?.mimeType ?? undefined, track?.name || track?.title)
 
   // Media Session API 동기화
   useEffect(() => {
@@ -709,7 +709,7 @@ export default function DesktopPlayer() {
                       </div>
                       {playlist.map((t, i) => {
                         const art = t.cover_art || t.thumbnailLink || (t as any).thumbnail_link
-                        const fmt = getFormatFromMime(t.mimeType, t.name || t.title)
+                        const fmt = getFormatFromMime(t.mimeType ?? undefined, t.name || t.title)
                         return (
                           <div 
                             key={i}

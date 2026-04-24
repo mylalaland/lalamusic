@@ -604,7 +604,7 @@ export default function DesktopConnect() {
                      const isFolder = item.mimeType === 'application/vnd.google-apps.folder'
                      const isActive = currentTrack?.id === item.id
                      const isCurrentlyPlaying = isActive && isPlaying
-                     const fmt = isFolder ? '' : (getFormatFromMime(item.mimeType, item.name) || getExtFromName(item.name))
+                     const fmt = isFolder ? '' : (getFormatFromMime(item.mimeType ?? undefined, item.name) || getExtFromName(item.name))
                      const size = isFolder ? '' : formatFileSize(item.size)
                      const isFav = favorites.some((f: any) => f.id === item.id)
                      
