@@ -284,13 +284,13 @@ export default function LibraryPage() {
   }, [folders, baseFolderId])
 
   return (
-    <div className="pb-32 bg-black min-h-screen text-white relative">
+    <div className="pb-32 analog-surface min-h-screen text-[var(--text-main)] relative">
       {/* Header */}
-      <div className="sticky top-0 bg-black/90 backdrop-blur-md z-20 border-b border-gray-800">
+      <div className="sticky top-0 bg-[color:var(--bg-surface)]/90 backdrop-blur-md z-20 border-b border-[var(--border-strong)]">
         <div className="px-4 h-[60px] flex items-center justify-between">
           <div className="flex items-center gap-3">
             {currentView !== 'menu' && (
-                <button onClick={() => setState({ currentView: 'menu' })} className="p-2 -ml-2 hover:bg-gray-800 rounded-full">
+                <button onClick={() => setState({ currentView: 'menu' })} className="p-2 -ml-2 hover:bg-[var(--bg-container-high)] rounded-full">
                     <Icon.ArrowLeft />
                 </button>
             )}
@@ -302,7 +302,7 @@ export default function LibraryPage() {
                      currentView === 'playlists' ? 'Playlists' : 
                      currentView === 'bookmarks' ? 'Bookmarks' : 'All Songs'}
                 </h1>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-[color:var(--text-muted)]/80">
                     {syncing ? `${syncProgress}곡 처리 중...` : 
                      currentView === 'tracks' ? `Total ${totalCount.toLocaleString()} songs` : 
                      currentView === 'playlists' ? `${playlists.length} playlists` : 
@@ -317,16 +317,16 @@ export default function LibraryPage() {
                      if (currentView === 'tracks') handleShufflePlay(tracks);
                      if (currentView === 'playlists') handleShufflePlay(playlistTracks);
                      if (currentView === 'folder_detail') handleShufflePlay(folderTracks);
-                 }} className="p-2 rounded-full text-gray-400 hover:text-white hover:bg-gray-800" title="Shuffle Play">
+                 }} className="p-2 rounded-full text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-container-high)]" title="Shuffle Play">
                     <Icon.Shuffle size={20} />
                  </button>
              )}
              {currentView === 'tracks' && (
-                 <button onClick={handleAnalyze} disabled={analyzing} className="p-2 rounded-full text-green-400 hover:bg-gray-800" title="Analyze">
+                 <button onClick={handleAnalyze} disabled={analyzing} className="p-2 rounded-full text-[var(--tertiary)] hover:bg-[var(--bg-container-high)]" title="Analyze">
                     {analyzing ? <Icon.Loader2 className="animate-spin" size={20} /> : <Icon.FileMusic size={20} />}
                  </button>
              )}
-             <button onClick={handleSync} disabled={syncing} className={`p-2 rounded-full ${syncing ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`} title="Sync">
+             <button onClick={handleSync} disabled={syncing} className={`p-2 rounded-full ${syncing ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`} title="Sync">
                {syncing ? <Icon.Loader2 className="animate-spin" /> : <Icon.RefreshCw />}
              </button>
           </div>
@@ -336,11 +336,11 @@ export default function LibraryPage() {
         {currentView === 'tracks' && (
              <div className="p-4 pb-2 space-y-2">
                 {/* 검색창 */}
-                <div className={`bg-gray-900 rounded-xl flex items-center px-4 py-2.5 gap-3 border transition-colors ${isAiMode ? 'border-purple-500/50 bg-purple-900/10' : 'border-gray-800'}`}>
-                  <button onClick={() => { setState({ isAiMode: !isAiMode, searchQuery: '' }) }} className={`p-1.5 rounded-lg transition ${isAiMode ? 'bg-purple-500 text-white' : 'text-gray-500 hover:bg-gray-800'}`}>
+                <div className={`bg-[var(--bg-container)] rounded-xl flex items-center px-4 py-2.5 gap-3 border transition-colors ${isAiMode ? 'border-[var(--tertiary)]/50 bg-[var(--tertiary)]/10' : 'border-[var(--border-strong)]'}`}>
+                  <button onClick={() => { setState({ isAiMode: !isAiMode, searchQuery: '' }) }} className={`p-1.5 rounded-lg transition ${isAiMode ? 'bg-[var(--tertiary)] text-white' : 'text-[color:var(--text-muted)]/80 hover:bg-[var(--bg-container-high)]'}`}>
                     <Icon.Sparkles size={18} fill={isAiMode ? "currentColor" : "none"} />
                   </button>
-                  <input type="text" placeholder={isAiMode ? "Ask AI..." : "Search..."} value={searchQuery} onChange={(e) => setState({ searchQuery: e.target.value })} className="bg-transparent border-none outline-none flex-1 text-white text-sm" />
+                  <input type="text" placeholder={isAiMode ? "Ask AI..." : "Search..."} value={searchQuery} onChange={(e) => setState({ searchQuery: e.target.value })} className="bg-transparent border-none outline-none flex-1 text-[var(--text-main)] text-sm" />
                   {searchQuery && <button onClick={() => setState({ searchQuery: '' })}>✕</button>}
                 </div>
 
@@ -350,12 +350,12 @@ export default function LibraryPage() {
                         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide flex-1">
                             {/* 날짜 정렬 버튼 추가됨 */}
                             <button onClick={() => setState({ sortBy: 'date' })} 
-                                className={`flex items-center gap-1 px-3 py-1 text-xs rounded-full border transition ${sortBy === 'date' ? 'bg-white text-black border-white font-bold' : 'border-gray-700 text-gray-400'}`}>
+                                className={`flex items-center gap-1 px-3 py-1 text-xs rounded-full border transition ${sortBy === 'date' ? 'bg-[var(--text-main)] text-[var(--bg-surface)] border-[var(--text-main)] font-bold' : 'border-[var(--border-strong)] text-[var(--text-muted)]'}`}>
                                 <Icon.Calendar size={12}/> Recent
                             </button>
                             {['name', 'artist', 'album'].map(opt => (
                                 <button key={opt} onClick={() => setState({ sortBy: opt as any })} 
-                                    className={`px-3 py-1 text-xs rounded-full border transition ${sortBy === opt ? 'bg-white text-black border-white font-bold' : 'border-gray-700 text-gray-400'}`}>
+                                    className={`px-3 py-1 text-xs rounded-full border transition ${sortBy === opt ? 'bg-[var(--text-main)] text-[var(--bg-surface)] border-[var(--text-main)] font-bold' : 'border-[var(--border-strong)] text-[var(--text-muted)]'}`}>
                                     {opt === 'name' ? 'Title' : opt === 'artist' ? 'Artist' : 'Album'}
                                 </button>
                             ))}
@@ -363,7 +363,7 @@ export default function LibraryPage() {
                         
                         {/* 🟢 오름/내림차순 토글 버튼 */}
                         <button onClick={() => setState({ sortOrder: sortOrder === 'asc' ? 'desc' : 'asc' })} 
-                                className="p-1.5 bg-gray-800 rounded-lg text-gray-400 hover:text-white ml-2">
+                                className="p-1.5 bg-[var(--bg-container-high)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-main)] ml-2">
                             {sortOrder === 'asc' ? <Icon.ArrowUpNarrowWide size={16}/> : <Icon.ArrowDownWideNarrow size={16}/>}
                         </button>
                     </div>
@@ -376,10 +376,10 @@ export default function LibraryPage() {
         {/* A. Menu */}
         {currentView === 'menu' && (
             <div className="space-y-2 p-2">
-                <div onClick={() => { setState({ currentView: 'tracks' }); loadTracks(0, ''); }} className="flex items-center gap-4 p-4 bg-gray-900/50 rounded-xl cursor-pointer hover:bg-gray-800 transition"><div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-400"><Icon.Music size={24} /></div><div className="flex-1"><p className="font-bold text-lg">All Songs</p><p className="text-sm text-gray-500">{totalCount.toLocaleString()} tracks</p></div><Icon.ChevronRight className="text-gray-600" /></div>
-                <div onClick={() => setState({ currentView: 'playlists' })} className="flex items-center gap-4 p-4 bg-gray-900/50 rounded-xl cursor-pointer hover:bg-gray-800 transition"><div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center text-purple-400"><Icon.ListMusic size={24} /></div><div className="flex-1"><p className="font-bold text-lg">Playlists</p><p className="text-sm text-gray-500">{playlists.length} lists</p></div><Icon.ChevronRight className="text-gray-600" /></div>
-                <div onClick={() => { setState({ currentView: 'foldermap' }); loadFolderMap(); }} className="flex items-center gap-4 p-4 bg-gray-900/50 rounded-xl cursor-pointer hover:bg-gray-800 transition"><div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center text-green-400"><Icon.Map size={24} /></div><div className="flex-1"><p className="font-bold text-lg">Browse Folders</p><p className="text-sm text-gray-500">Explore by directory</p></div><Icon.ChevronRight className="text-gray-600" /></div>
-                <div onClick={async () => { setState({ currentView: 'bookmarks', loading: true }); const { getBookmarks } = await import('@/app/actions/bookmarks'); const bms = await getBookmarks(); setState({ bookmarks: bms, loading: false }); }} className="flex items-center gap-4 p-4 bg-gray-900/50 rounded-xl cursor-pointer hover:bg-gray-800 transition"><div className="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center text-yellow-500"><Icon.Bookmark size={24} /></div><div className="flex-1"><p className="font-bold text-lg">Bookmarks</p><p className="text-sm text-gray-500">Saved audio positions</p></div><Icon.ChevronRight className="text-gray-600" /></div>
+                <div onClick={() => { setState({ currentView: 'tracks' }); loadTracks(0, ''); }} className="flex items-center gap-4 p-4 bg-[color:var(--bg-container)]/50 rounded-xl cursor-pointer hover:bg-[var(--bg-container-high)] transition"><div className="w-10 h-10 bg-[var(--tertiary)]/20 rounded-lg flex items-center justify-center text-[var(--tertiary)]"><Icon.Music size={24} /></div><div className="flex-1"><p className="font-bold text-lg">All Songs</p><p className="text-sm text-[color:var(--text-muted)]/80">{totalCount.toLocaleString()} tracks</p></div><Icon.ChevronRight className="text-[color:var(--text-muted)]/60" /></div>
+                <div onClick={() => setState({ currentView: 'playlists' })} className="flex items-center gap-4 p-4 bg-[color:var(--bg-container)]/50 rounded-xl cursor-pointer hover:bg-[var(--bg-container-high)] transition"><div className="w-10 h-10 bg-[var(--tertiary)]/20 rounded-lg flex items-center justify-center text-[var(--tertiary)]"><Icon.ListMusic size={24} /></div><div className="flex-1"><p className="font-bold text-lg">Playlists</p><p className="text-sm text-[color:var(--text-muted)]/80">{playlists.length} lists</p></div><Icon.ChevronRight className="text-[color:var(--text-muted)]/60" /></div>
+                <div onClick={() => { setState({ currentView: 'foldermap' }); loadFolderMap(); }} className="flex items-center gap-4 p-4 bg-[color:var(--bg-container)]/50 rounded-xl cursor-pointer hover:bg-[var(--bg-container-high)] transition"><div className="w-10 h-10 bg-[var(--tertiary)]/20 rounded-lg flex items-center justify-center text-[var(--tertiary)]"><Icon.Map size={24} /></div><div className="flex-1"><p className="font-bold text-lg">Browse Folders</p><p className="text-sm text-[color:var(--text-muted)]/80">Explore by directory</p></div><Icon.ChevronRight className="text-[color:var(--text-muted)]/60" /></div>
+                <div onClick={async () => { setState({ currentView: 'bookmarks', loading: true }); const { getBookmarks } = await import('@/app/actions/bookmarks'); const bms = await getBookmarks(); setState({ bookmarks: bms, loading: false }); }} className="flex items-center gap-4 p-4 bg-[color:var(--bg-container)]/50 rounded-xl cursor-pointer hover:bg-[var(--bg-container-high)] transition"><div className="w-10 h-10 bg-[var(--tertiary)]/20 rounded-lg flex items-center justify-center text-[var(--tertiary)]"><Icon.Bookmark size={24} /></div><div className="flex-1"><p className="font-bold text-lg">Bookmarks</p><p className="text-sm text-[color:var(--text-muted)]/80">Saved audio positions</p></div><Icon.ChevronRight className="text-[color:var(--text-muted)]/60" /></div>
             </div>
         )}
 
@@ -388,16 +388,16 @@ export default function LibraryPage() {
             <div className="pb-10 relative min-h-[200px]">
                 {/* [NEW] 로딩 인디케이터 오버레이 */}
                 {loading && (
-                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm rounded-xl transition-opacity duration-300">
-                        <Icon.Loader2 className="animate-spin text-blue-400 mb-3" size={40} />
-                        <span className="text-gray-200 font-medium animate-pulse">
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[color:var(--bg-surface)]/60 backdrop-blur-sm rounded-xl transition-opacity duration-300">
+                        <Icon.Loader2 className="animate-spin text-[var(--tertiary)] mb-3" size={40} />
+                        <span className="text-[var(--text-main)] font-medium animate-pulse">
                             {isAiMode ? "AI가 보석 같은 곡을 찾는 중..." : "Loading..."}
                         </span>
                     </div>
                 )}
 
                 {!loading && tracks.length === 0 && (
-                    <div className="text-center py-20 text-gray-500">
+                    <div className="text-center py-20 text-[color:var(--text-muted)]/80">
                         <p>표시할 곡이 없습니다.</p>
                     </div>
                 )}
@@ -414,7 +414,7 @@ export default function LibraryPage() {
                         onAddPlaylist={(t, e) => { e.stopPropagation(); setTrackToAdd(t); setShowAddToPlaylistModal(true); }}
                     />
                 ))}
-                {hasMore && !loading && <button onClick={() => loadTracks(page + 1, searchQuery)} className="w-full py-4 text-blue-400 font-bold mt-2">Load More</button>}
+                {hasMore && !loading && <button onClick={() => loadTracks(page + 1, searchQuery)} className="w-full py-4 text-[var(--tertiary)] font-bold mt-2">Load More</button>}
             </div>
         )}
 
@@ -423,21 +423,21 @@ export default function LibraryPage() {
             <div className="p-2">
                 <button onClick={() => { const n = prompt('New Playlist Name:'); if(n) createPlaylist(n).then(() => loadPlaylists()); }} className="w-full py-3 mb-4 bg-blue-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-500"><Icon.Plus size={20} /> New Playlist</button>
                 {playlists.map(pl => (
-                    <div key={pl.id} onClick={async () => { setState({ selectedPlaylist: pl }); setState({ playlistTracks: await getPlaylistTracks(pl.id) }); }} className="flex items-center gap-4 p-4 bg-gray-900/50 mb-2 rounded-xl cursor-pointer hover:bg-gray-800">
-                        <Icon.ListMusic size={24} className="text-blue-400" /><span className="font-bold flex-1 text-lg">{pl.name}</span>
-                        <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete?')) deletePlaylist(pl.id).then(loadPlaylists); }} className="p-2"><Icon.Trash2 className="text-gray-600 hover:text-red-500" size={20}/></button>
+                    <div key={pl.id} onClick={async () => { setState({ selectedPlaylist: pl }); setState({ playlistTracks: await getPlaylistTracks(pl.id) }); }} className="flex items-center gap-4 p-4 bg-[color:var(--bg-container)]/50 mb-2 rounded-xl cursor-pointer hover:bg-[var(--bg-container-high)]">
+                        <Icon.ListMusic size={24} className="text-[var(--tertiary)]" /><span className="font-bold flex-1 text-lg">{pl.name}</span>
+                        <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete?')) deletePlaylist(pl.id).then(loadPlaylists); }} className="p-2"><Icon.Trash2 className="text-[color:var(--text-muted)]/60 hover:text-red-500" size={20}/></button>
                     </div>
                 ))}
             </div>
         )}
         {currentView === 'playlists' && selectedPlaylist && (
             <div>
-                <div className="flex items-center gap-2 p-2 mb-4"><button onClick={() => setState({ selectedPlaylist: null })} className="p-2 bg-gray-800 rounded-full"><Icon.ArrowLeft/></button><h2 className="text-xl font-bold">{selectedPlaylist.name}</h2></div>
+                <div className="flex items-center gap-2 p-2 mb-4"><button onClick={() => setState({ selectedPlaylist: null })} className="p-2 bg-[var(--bg-container-high)] rounded-full"><Icon.ArrowLeft/></button><h2 className="text-xl font-bold">{selectedPlaylist.name}</h2></div>
                 {playlistTracks.map(track => (
-                    <div key={track.id} onClick={() => { setPlaylist(playlistTracks); setTrack(track); }} className="flex items-center gap-3 p-3 hover:bg-white/10 rounded-xl cursor-pointer group">
-                         <div className="w-10 h-10 bg-gray-800 rounded flex items-center justify-center">{track.cover_art ? <img src={track.cover_art} className="w-full h-full object-cover"/> : <Icon.Music size={18} className="text-gray-500"/>}</div>
+                    <div key={track.id} onClick={() => { setPlaylist(playlistTracks); setTrack(track); }} className="flex items-center gap-3 p-3 hover:bg-[var(--bg-container-highest)] rounded-xl cursor-pointer group">
+                         <div className="w-10 h-10 bg-[var(--bg-container-high)] rounded flex items-center justify-center">{track.cover_art ? <img src={track.cover_art} className="w-full h-full object-cover"/> : <Icon.Music size={18} className="text-[color:var(--text-muted)]/80"/>}</div>
                         <div className="flex-1 min-w-0"><p className="truncate font-medium">{track.name}</p></div>
-                        <button onClick={(e) => handleRemoveTrackFromPlaylist(e, track.id)} className="p-2 text-gray-600 hover:text-red-500 hover:bg-white/10 rounded-full"><Icon.X size={18} /></button>
+                        <button onClick={(e) => handleRemoveTrackFromPlaylist(e, track.id)} className="p-2 text-[color:var(--text-muted)]/60 hover:text-red-500 hover:bg-[var(--bg-container-highest)] rounded-full"><Icon.X size={18} /></button>
                     </div>
                 ))}
             </div>
@@ -446,24 +446,24 @@ export default function LibraryPage() {
         {currentView === 'bookmarks' && (
             <div className="pb-10 relative">
                 {loading ? (
-                    <div className="text-center py-20 text-gray-500 animate-pulse"><Icon.Loader2 className="animate-spin mb-2 mx-auto" /></div>
+                    <div className="text-center py-20 text-[color:var(--text-muted)]/80 animate-pulse"><Icon.Loader2 className="animate-spin mb-2 mx-auto" /></div>
                 ) : bookmarks.length === 0 ? (
-                    <div className="text-center py-20 text-gray-500"><p>북마크된 구간이 없습니다.</p></div>
+                    <div className="text-center py-20 text-[color:var(--text-muted)]/80"><p>북마크된 구간이 없습니다.</p></div>
                 ) : (
                     <div>
                     {bookmarks.map(b => {
                         const track = { ...b.track, initialPosition: b.position };
                         return (
-                        <div key={b.bookmark_id} onClick={() => { setPlaylist(bookmarks.map(x=>({...x.track, initialPosition: x.position}))); setTrack(track); }} className="flex items-center gap-3 p-3 hover:bg-white/10 rounded-xl cursor-pointer group">
-                            <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center relative overflow-hidden">
-                               {track.cover_art || track.thumbnail_link ? <img src={track.cover_art || track.thumbnail_link} className="w-full h-full object-cover"/> : <Icon.Music size={20} className="text-gray-500"/>}
+                        <div key={b.bookmark_id} onClick={() => { setPlaylist(bookmarks.map(x=>({...x.track, initialPosition: x.position}))); setTrack(track); }} className="flex items-center gap-3 p-3 hover:bg-[var(--bg-container-highest)] rounded-xl cursor-pointer group">
+                            <div className="w-12 h-12 bg-[var(--bg-container-high)] rounded-lg flex items-center justify-center relative overflow-hidden">
+                               {track.cover_art || track.thumbnail_link ? <img src={track.cover_art || track.thumbnail_link} className="w-full h-full object-cover"/> : <Icon.Music size={20} className="text-[color:var(--text-muted)]/80"/>}
                             </div>
                             <div className="flex-1 min-w-0">
                                  <p className="truncate font-medium flex items-center gap-2">
                                      {track.title || track.name?.replace(/\.(mp3|wav|flac|m4a)$/i, '') || track.file_name?.replace(/\.[^.]+$/, '')}
-                                     <span className="text-xs bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full">{Math.floor(b.position / 60)}:{String(Math.floor(b.position % 60)).padStart(2, '0')}</span>
+                                     <span className="text-xs bg-[var(--tertiary)]/20 text-[var(--tertiary)] px-1.5 py-0.5 rounded-full">{Math.floor(b.position / 60)}:{String(Math.floor(b.position % 60)).padStart(2, '0')}</span>
                                  </p>
-                                 <p className="text-sm text-gray-400 truncate">{b.bookmark_title || track.artist || 'Unknown'}</p>
+                                 <p className="text-sm text-[var(--text-muted)] truncate">{b.bookmark_title || track.artist || 'Unknown'}</p>
                             </div>
                         </div>
                     )})}
@@ -475,22 +475,22 @@ export default function LibraryPage() {
         {/* 🟢 E. Folder Map (다중 선택 및 트리 시각화 적용) */}
         {currentView === 'foldermap' && (
             <div className="p-2">
-                <div className="bg-gray-900/30 rounded-xl p-4 min-h-[70vh] border border-gray-800 relative">
-                    <div className="flex items-center justify-between mb-4 border-b border-gray-800 pb-3">
-                        <div className="flex items-center gap-2 text-gray-300"><Icon.Map size={20} className="text-green-400" /><span className="font-bold">Folder Map</span></div>
+                <div className="bg-[color:var(--bg-container)]/30 rounded-xl p-4 min-h-[70vh] border border-[var(--border-strong)] relative">
+                    <div className="flex items-center justify-between mb-4 border-b border-[var(--border-strong)] pb-3">
+                        <div className="flex items-center gap-2 text-[color:var(--text-main)]/80"><Icon.Map size={20} className="text-[var(--success)]" /><span className="font-bold">Folder Map</span></div>
                         
                         {/* 다중 삭제 버튼 */}
                         {selectedFolderIds.length > 0 && (
-                            <button onClick={handleBatchDeleteFolders} className="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded-full font-bold animate-in fade-in slide-in-from-right-5">
+                            <button onClick={handleBatchDeleteFolders} className="text-xs bg-[var(--danger)] hover:opacity-80 text-[var(--text-main)] px-3 py-1 rounded-full font-bold animate-in fade-in slide-in-from-right-5">
                                 {selectedFolderIds.length}개 삭제
                             </button>
                         )}
                     </div>
                     
                     {loading ? (
-                        <div className="text-center py-20 text-gray-500 animate-pulse"><Icon.Loader2 className="animate-spin mb-2 mx-auto" /><span>구조 파악 중...</span></div>
+                        <div className="text-center py-20 text-[color:var(--text-muted)]/80 animate-pulse"><Icon.Loader2 className="animate-spin mb-2 mx-auto" /><span>구조 파악 중...</span></div>
                     ) : folders.length === 0 ? (
-                        <div className="text-center py-20 text-gray-500"><p>스캔된 폴더가 없습니다.</p></div>
+                        <div className="text-center py-20 text-[color:var(--text-muted)]/80"><p>스캔된 폴더가 없습니다.</p></div>
                     ) : (
                         <div className="space-y-0.5 overflow-x-auto pb-10">
                             {rootFolders.map(node => (
@@ -514,7 +514,7 @@ export default function LibraryPage() {
         {currentView === 'folder_detail' && selectedFolder && (
             <div className="pb-10">
                 <div className="flex items-center gap-2 p-2 mb-2">
-                    <button onClick={() => setState({ currentView: 'foldermap' })} className="p-2 bg-gray-800 rounded-full hover:bg-gray-700"><Icon.ArrowLeft/></button>
+                    <button onClick={() => setState({ currentView: 'foldermap' })} className="p-2 bg-[var(--bg-container-high)] rounded-full hover:bg-[var(--bg-container-highest)]"><Icon.ArrowLeft/></button>
                     <div className="flex-1 overflow-hidden"><h2 className="text-xl font-bold truncate">{selectedFolder.name}</h2></div>
                 </div>
                 {folderTracks.map((track, i) => (
@@ -534,15 +534,15 @@ export default function LibraryPage() {
       </div>
 
       {showAddToPlaylistModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowAddToPlaylistModal(false)}>
-           <div className="bg-gray-900 w-full max-w-sm rounded-2xl p-4 border border-gray-800" onClick={e=>e.stopPropagation()}>
+        <div className="fixed inset-0 bg-[color:var(--bg-surface)]/80 z-50 flex items-center justify-center p-4" onClick={() => setShowAddToPlaylistModal(false)}>
+           <div className="bg-[var(--bg-container)] w-full max-w-sm rounded-2xl p-4 border border-[var(--border-strong)]" onClick={e=>e.stopPropagation()}>
                <h3 className="font-bold text-center mb-4 text-lg">Add to Playlist</h3>
                <div className="space-y-2 max-h-[50vh] overflow-y-auto">
                    {playlists.map(pl => (
-                       <button key={pl.id} onClick={async () => { await addTrackToPlaylist(pl.id, trackToAdd.id); setShowAddToPlaylistModal(false); alert('Added!'); }} className="w-full p-4 text-left bg-gray-800 hover:bg-blue-600 rounded-xl flex items-center gap-3 transition"><Icon.ListMusic size={20}/> <span className="font-medium">{pl.name}</span></button>
+                       <button key={pl.id} onClick={async () => { await addTrackToPlaylist(pl.id, trackToAdd.id); setShowAddToPlaylistModal(false); alert('Added!'); }} className="w-full p-4 text-left bg-[var(--bg-container-high)] hover:bg-blue-600 rounded-xl flex items-center gap-3 transition"><Icon.ListMusic size={20}/> <span className="font-medium">{pl.name}</span></button>
                    ))}
                </div>
-               <button onClick={() => setShowAddToPlaylistModal(false)} className="w-full py-3 mt-4 text-gray-400">Cancel</button>
+               <button onClick={() => setShowAddToPlaylistModal(false)} className="w-full py-3 mt-4 text-[var(--text-muted)]">Cancel</button>
            </div>
         </div>
       )}

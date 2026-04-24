@@ -49,7 +49,15 @@ function parseLRC(lrc: string) {
   return result.length > 0 ? result.sort((a, b) => a.time - b.time) : null
 }
 
-function getFormatFromMime(mimeType?: string) {
+function getFormatFromMime(mimeType?: string, fileName?: string) {
+  if (fileName) {
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith('.m4a') || lower.endsWith('.mp4')) return 'M4A';
+    if (lower.endsWith('.flac')) return 'FLAC';
+    if (lower.endsWith('.mp3')) return 'MP3';
+    if (lower.endsWith('.wav')) return 'WAV';
+    if (lower.endsWith('.aac')) return 'AAC';
+  }
   if (!mimeType) return 'AUDIO'
   const map: Record<string, string> = {
     'audio/mpeg': 'MP3', 'audio/mp3': 'MP3',
@@ -415,38 +423,56 @@ export default function DesktopPlayer() {
     return () => clearTimeout(timer)
   }, [sleepTimer])
 
-  if (!track) return (
-    <div className="h-[80px] flex items-center justify-center" style={{ background: 'rgba(7,9,13,0.95)', borderTop: '1px solid rgba(153,247,255,0.06)' }}>
-      <span className="text-[11px] font-['Space_Grotesk'] text-[#44484f] tracking-[0.3em] uppercase">NO_SIGNAL — SELECT_TRACK</span>
-    </div>
-  )
-
-  const displayTitle = track.title || track.name?.replace(/\.(mp3|wav|flac|m4a|ogg|aac|wma)$/i, '') || 'Unknown'
-  let displayArt = localCoverArt || track.cover_art || track.thumbnailLink || (track as any).thumbnail_link || null
+  const displayTitle = track?.title || track?.name?.replace(/\.(mp3|wav|flac|m4a|ogg|aac|wma)$/i, '') || 'Unknown'
+  let displayArt = localCoverArt || track?.cover_art || track?.thumbnailLink || (track as any)?.thumbnail_link || null
   if (typeof displayArt === 'string' && displayArt.includes('[object Object]')) displayArt = null
-  const validDuration = (duration && isFinite(duration) && duration > 0) ? duration : ((track as any).duration || 0)
+  const validDuration = (duration && isFinite(duration) && duration > 0) ? duration : ((track as any)?.duration || 0)
   const progressPercent = (currentTime / (validDuration || 1)) * 100
   const hasLyrics = displayLyrics && displayLyrics.length > 0
-  const audioFormat = getFormatFromMime(track.mimeType)
+  const audioFormat = getFormatFromMime(track?.mimeType, track?.name || track?.title)
+
+  // Media Session API 동기화
+  useEffect(() => {
+    if ('mediaSession' in navigator && track) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: displayTitle,
+        artist: track.artist || 'Unknown Artist',
+        album: track.album || 'Lala Music',
+        artwork: displayArt ? [
+          { src: displayArt, sizes: '512x512', type: 'image/jpeg' }
+        ] : []
+      })
+
+      navigator.mediaSession.setActionHandler('play', () => { togglePlay() })
+      navigator.mediaSession.setActionHandler('pause', () => { togglePlay() })
+      navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev() })
+      navigator.mediaSession.setActionHandler('nexttrack', () => { playNext() })
+    }
+  }, [track, displayArt, displayTitle])
 
   return (
     <>
-      <audio 
-        ref={audioRef} preload="auto" playsInline 
-        onTimeUpdate={handleTimeUpdate} 
-        onLoadedMetadata={handleLoadedMetadata} 
-        onEnded={handleNextWrapped}
-        onError={handleAudioError}
-      />
+      {!track ? (
+        <div className="h-[80px] flex items-center justify-center analog-surface border-t border-[var(--border-light)]">
+          <span className="text-[11px] font-['Work_Sans'] text-[var(--text-muted)] tracking-[0.2em] font-bold uppercase">NO ARTWORK</span>
+        </div>
+      ) : (
+        <>
+          <audio 
+            ref={audioRef} preload="auto" playsInline 
+            onTimeUpdate={handleTimeUpdate} 
+            onLoadedMetadata={handleLoadedMetadata} 
+            onEnded={handleNextWrapped}
+            onError={handleAudioError}
+          />
 
       {/* ==================== 하단 바 (항상 표시) ==================== */}
       <div 
-        className="h-[80px] flex items-center justify-between px-4 relative z-50 shrink-0"
-        style={{ background: 'rgba(7,9,13,0.97)', borderTop: '1px solid rgba(153,247,255,0.08)', backdropFilter: 'blur(20px)' }}
+        className="h-[80px] flex items-center justify-between px-4 relative z-50 shrink-0 analog-surface border-t border-[var(--border-light)]"
       >
         {/* 상단 프로그레스 */}
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-white/5">
-          <div className="h-full bg-[#99f7ff] transition-all duration-200" style={{ width: `${progressPercent}%`, boxShadow: '0 0 10px rgba(153,247,255,0.5)' }} />
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-[var(--bg-container-highest)]">
+          <div className="h-full bg-[var(--tertiary)] transition-all duration-200" style={{ width: `${progressPercent}%` }} />
           <input type="range" min={0} max={validDuration || 100} step="any" value={currentTime}
             onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
             className="absolute top-0 left-0 w-full h-3 -translate-y-1 opacity-0 cursor-pointer z-20" />
@@ -454,58 +480,55 @@ export default function DesktopPlayer() {
 
         {/* 좌측: 곡 정보 (클릭하면 확장) */}
         <div className="flex items-center gap-3 w-[30%] min-w-[220px] cursor-pointer group" onClick={() => setExpanded(!isExpanded)}>
-          <div className="w-12 h-12 bg-[#0f141a] border border-[#99f7ff]/15 shrink-0 overflow-hidden flex items-center justify-center relative">
+          <div className="w-12 h-12 bg-[var(--bg-container)] border border-[var(--border-strong)] shrink-0 overflow-hidden flex items-center justify-center relative shadow-[var(--shadow-ambient)] rounded-sm">
             {displayArt ? (
               <img src={displayArt} referrerPolicy="no-referrer" crossOrigin="anonymous" className="w-full h-full object-cover" onError={(e) => e.currentTarget.style.display='none'} />
             ) : (
-              <Icon.Music size={18} className="text-[#99f7ff]/30" />
+              <Icon.Music size={18} className="text-[var(--text-muted)] opacity-50" />
             )}
           </div>
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-['Space_Grotesk'] text-sm font-bold text-[#f1f3fc] truncate tracking-tight group-hover:text-[#99f7ff] transition-colors">
+              <span className="font-['Noto_Serif'] font-bold text-[var(--text-main)] truncate tracking-tight group-hover:text-[var(--tertiary)] transition-colors">
                 {displayTitle}
               </span>
-              <span className="text-[9px] font-['Space_Grotesk'] text-[#99f7ff]/60 bg-[#99f7ff]/8 px-1.5 py-0.5 border border-[#99f7ff]/15 shrink-0">
+              <span className="text-[9px] font-['Work_Sans'] text-[var(--tertiary)] bg-[var(--tertiary)]/10 px-1.5 py-0.5 border border-[var(--tertiary)]/20 shrink-0 rounded-sm font-bold uppercase tracking-wider">
                 {audioFormat}
               </span>
             </div>
-            <span className="font-['Inter'] text-xs text-[#72757d] truncate">{track.artist || 'Unknown'}</span>
+            <span className="font-['Work_Sans'] text-xs text-[var(--text-muted)] truncate">{track.artist || 'Unknown'}</span>
           </div>
-          <button className="ml-1 text-[#72757d] hover:text-[#99f7ff] transition-colors shrink-0">
+          <button className="ml-1 text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors shrink-0">
             {isExpanded ? <Icon.ChevronDown size={18} /> : <Icon.ChevronUp size={18} />}
           </button>
         </div>
 
         {/* 중앙: 컨트롤 */}
         <div className="flex flex-col items-center justify-center w-[40%] max-w-[600px]">
-          <div className="flex items-center gap-4 mb-1">
-            <button onClick={() => setIsShuffle(!isShuffle)} className={`transition-colors ${isShuffle ? 'text-[#99f7ff]' : 'text-[#72757d] hover:text-[#99f7ff]'}`}>
-              <Icon.Shuffle size={15} />
+          <div className="flex items-center gap-5 mb-1.5">
+            <button onClick={() => setIsShuffle(!isShuffle)} className={`transition-colors ${isShuffle ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+              <Icon.Shuffle size={16} />
             </button>
-            <button onClick={handlePrevWrapped} className="text-[#a8abb3] hover:text-[#99f7ff] transition active:scale-90">
-              <Icon.SkipBack size={18} fill="currentColor" />
+            <button onClick={handlePrevWrapped} className="text-[var(--primary)] hover:text-[var(--tertiary)] transition active:scale-90">
+              <Icon.SkipBack size={20} fill="currentColor" />
             </button>
             <button 
               onClick={togglePlay}
-              className="w-9 h-9 flex items-center justify-center text-[#004145] hover:scale-105 active:scale-95 transition-all"
-              style={{ background: 'linear-gradient(135deg, #99f7ff, #00f1fe)', boxShadow: '0 0 20px rgba(0,241,254,0.2)' }}
+              className="w-10 h-10 flex items-center justify-center bg-[var(--primary)] text-[var(--on-primary)] rounded-full hover:scale-105 active:scale-95 transition-all shadow-[var(--shadow-ambient)]"
             >
-              {isPlaying ? <Icon.Pause size={16} fill="currentColor" /> : <Icon.Play size={16} fill="currentColor" className="ml-0.5" />}
+              {isPlaying ? <Icon.Pause size={18} fill="currentColor" /> : <Icon.Play size={18} fill="currentColor" className="ml-0.5" />}
             </button>
-            <button onClick={handleNextWrapped} className="text-[#a8abb3] hover:text-[#99f7ff] transition active:scale-90">
-              <Icon.SkipForward size={18} fill="currentColor" />
+            <button onClick={handleNextWrapped} className="text-[var(--primary)] hover:text-[var(--tertiary)] transition active:scale-90">
+              <Icon.SkipForward size={20} fill="currentColor" />
             </button>
-            <button onClick={toggleRepeat} className={`transition-colors ${repeatMode !== 'off' ? 'text-[#99f7ff]' : 'text-[#72757d] hover:text-[#99f7ff]'}`}>
-              {repeatMode === 'one' ? <Icon.Repeat1 size={15} /> : <Icon.Repeat size={15} />}
+            <button onClick={toggleRepeat} className={`transition-colors ${repeatMode !== 'off' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+              {repeatMode === 'one' ? <Icon.Repeat1 size={16} /> : <Icon.Repeat size={16} />}
             </button>
           </div>
-          <div className="w-full flex items-center gap-2 text-[10px] text-[#72757d] font-['Space_Grotesk'] tracking-wider">
+          <div className="w-full flex items-center gap-3 text-[10px] text-[var(--text-muted)] font-['Work_Sans'] font-medium">
             <span className="w-10 text-right">{formatTime(currentTime)}</span>
-            <div className="flex-1 h-[3px] bg-[#1b2028] relative cursor-pointer overflow-hidden group/seek">
-              <div className="absolute inset-y-0 left-0 bg-[#99f7ff]" style={{ width: `${progressPercent}%`, boxShadow: '0 0 8px rgba(153,247,255,0.4)' }}>
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-[#99f7ff] opacity-0 group-hover/seek:opacity-100 transition-opacity translate-x-1.5" style={{ boxShadow: '0 0 10px rgba(153,247,255,1)' }} />
-              </div>
+            <div className="flex-1 h-1 bg-[var(--bg-container-highest)] rounded-full relative cursor-pointer overflow-hidden group/seek shadow-[var(--shadow-pressed)]">
+              <div className="absolute inset-y-0 left-0 bg-[var(--tertiary)] rounded-full" style={{ width: `${progressPercent}%` }} />
               <input type="range" min={0} max={validDuration || 100} step="any" value={currentTime}
                 onChange={handleSeekChange} onMouseUp={handleSeekEnd}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
@@ -515,29 +538,29 @@ export default function DesktopPlayer() {
         </div>
 
         {/* 우측: 볼륨 + 부가 */}
-        <div className="flex items-center justify-end gap-2 w-[30%] min-w-[200px] text-[#72757d]">
-          <button onClick={() => setExpandedView('lyrics')} className={`p-1.5 transition-colors ${expandedView === 'lyrics' && isExpanded ? 'text-[#99f7ff]' : 'hover:text-[#99f7ff]'}`}>
-            <Icon.Mic2 size={15} />
+        <div className="flex items-center justify-end gap-2 w-[30%] min-w-[200px] text-[var(--text-muted)]">
+          <button onClick={() => setExpandedView('lyrics')} className={`p-1.5 transition-colors ${expandedView === 'lyrics' && isExpanded ? 'text-[var(--tertiary)]' : 'hover:text-[var(--text-main)]'}`}>
+            <Icon.Mic2 size={16} />
           </button>
-          <button onClick={() => { setExpandedView('queue'); if(!isExpanded) setExpanded(true) }} className={`p-1.5 transition-colors ${expandedView === 'queue' && isExpanded ? 'text-[#99f7ff]' : 'hover:text-[#99f7ff]'}`}>
-            <Icon.ListMusic size={15} />
+          <button onClick={() => { setExpandedView('queue'); if(!isExpanded) setExpanded(true) }} className={`p-1.5 transition-colors ${expandedView === 'queue' && isExpanded ? 'text-[var(--tertiary)]' : 'hover:text-[var(--text-main)]'}`}>
+            <Icon.ListMusic size={16} />
           </button>
-          <button onClick={() => { setExpandedView('eq'); if(!isExpanded) setExpanded(true) }} className={`p-1.5 transition-colors ${expandedView === 'eq' && isExpanded ? 'text-[#99f7ff]' : 'hover:text-[#99f7ff]'}`}>
-            <Icon.Settings2 size={15} />
+          <button onClick={() => { setExpandedView('eq'); if(!isExpanded) setExpanded(true) }} className={`p-1.5 transition-colors ${expandedView === 'eq' && isExpanded ? 'text-[var(--tertiary)]' : 'hover:text-[var(--text-main)]'}`}>
+            <Icon.Settings2 size={16} />
           </button>
-          <div className="w-[1px] h-5 bg-[#99f7ff]/10 mx-1" />
-          <button onClick={() => setIsMuted(!isMuted)} className="hover:text-[#99f7ff] transition-colors">
-            {isMuted || volume === 0 ? <Icon.VolumeX size={15} /> : <Icon.Volume2 size={15} />}
+          <div className="w-[1px] h-5 bg-[var(--border-strong)] mx-1 opacity-50" />
+          <button onClick={() => setIsMuted(!isMuted)} className="hover:text-[var(--text-main)] transition-colors">
+            {isMuted || volume === 0 ? <Icon.VolumeX size={16} /> : <Icon.Volume2 size={16} />}
           </button>
           <div className="flex items-center w-24 relative group/vol">
-            <div className="flex-1 h-[2px] bg-[#1b2028] relative overflow-hidden">
-              <div className="absolute inset-y-0 left-0 bg-[#99f7ff]" style={{ width: `${(isMuted ? 0 : volume) * 100}%`, boxShadow: '0 0 6px rgba(153,247,255,0.3)' }} />
+            <div className="flex-1 h-1 bg-[var(--bg-container-highest)] rounded-full relative overflow-hidden shadow-[var(--shadow-pressed)]">
+              <div className="absolute inset-y-0 left-0 bg-[var(--primary)] rounded-full" style={{ width: `${(isMuted ? 0 : volume) * 100}%` }} />
             </div>
             <input type="range" min={0} max={1} step={0.01} value={isMuted ? 0 : volume} 
               onChange={(e) => { setVolume(Number(e.target.value)); if(isMuted) setIsMuted(false) }} 
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
           </div>
-          <button onClick={toggleSpeed} className="text-[10px] font-['Space_Grotesk'] tracking-wider hover:text-[#99f7ff] px-1.5 py-0.5 border border-[#44484f]/50 hover:border-[#99f7ff]/30 transition-all">
+          <button onClick={toggleSpeed} className="text-[10px] font-['Work_Sans'] font-medium hover:text-[var(--text-main)] px-1.5 py-0.5 border border-[var(--border-strong)] rounded-sm hover:bg-[var(--bg-container)] transition-all">
             {playbackRate}x
           </button>
         </div>
@@ -551,39 +574,33 @@ export default function DesktopPlayer() {
             animate={{ height: 'calc(100vh - 80px)', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="absolute bottom-[80px] left-0 right-0 z-40 overflow-hidden"
-            style={{ background: '#0a0e14' }}
+            className="absolute bottom-[80px] left-0 right-0 z-40 overflow-hidden analog-surface"
           >
             <div className="w-full h-full flex relative">
-              {/* 배경 */}
-              <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-10" 
-                  style={{ background: 'radial-gradient(circle, rgba(153,247,255,0.15) 0%, transparent 70%)' }} />
-                <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(#99f7ff 0.4px, transparent 0.4px)', backgroundSize: '20px 20px' }} />
-              </div>
+              {/* 배경 텍스처 */}
+              <div className="absolute inset-0 pointer-events-none opacity-[0.02]" style={{ backgroundImage: 'radial-gradient(var(--primary) 1px, transparent 1px)', backgroundSize: '16px 16px' }} />
 
               {/* 좌측: 앨범 아트 + 곡 정보 */}
-              <div className="w-[400px] shrink-0 flex flex-col items-center justify-center p-8 relative z-10 border-r border-[#99f7ff]/5">
+              <div className="w-[400px] shrink-0 flex flex-col items-center justify-center p-8 relative z-10 border-r border-[var(--border-light)] bg-[var(--bg-container-low)]">
                 {/* 앨범 아트 */}
                 <div className="relative mb-6" style={{ width: 'min(300px, 28vw)' }}>
-                  <div className="absolute -inset-3 border border-[#99f7ff]/10 pointer-events-none opacity-50" />
-                  <div className="aspect-square w-full bg-[#0f141a] border border-[#99f7ff]/20 overflow-hidden relative" style={{ boxShadow: '0 0 60px rgba(0,241,254,0.08)' }}>
+                  <div className="aspect-square w-full bg-[var(--bg-container)] border border-[var(--border-strong)] overflow-hidden relative shadow-[var(--shadow-ambient)] rounded-sm">
                     {displayArt ? (
                       <img src={displayArt} referrerPolicy="no-referrer" crossOrigin="anonymous" className="w-full h-full object-cover" onError={(e) => e.currentTarget.style.display='none'} />
                     ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center" style={{ background: 'radial-gradient(circle, rgba(153,247,255,0.05) 0%, transparent 70%)' }}>
-                        <Icon.Music size={48} className="text-[#99f7ff]/20" />
-                        <span className="text-[9px] font-['Space_Grotesk'] text-[#44484f] mt-3 tracking-[0.3em] uppercase">NO_ARTWORK</span>
+                      <div className="w-full h-full flex flex-col items-center justify-center">
+                        <Icon.Music size={48} className="text-[var(--text-muted)] opacity-30" />
+                        <span className="text-[9px] font-['Work_Sans'] text-[var(--text-muted)] mt-3 tracking-[0.2em] uppercase font-bold">NO ARTWORK</span>
                       </div>
                     )}
                     {/* 포맷 뱃지 */}
-                    <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md border border-[#99f7ff]/20 px-2 py-0.5">
-                      <span className="text-[9px] font-['Space_Grotesk'] text-[#99f7ff] font-bold tracking-wider">{audioFormat}</span>
+                    <div className="absolute top-2 right-2 bg-[var(--bg-surface)]/80 backdrop-blur-md border border-[var(--border-strong)] px-2 py-0.5 rounded-sm">
+                      <span className="text-[9px] font-['Work_Sans'] text-[var(--tertiary)] font-bold tracking-wider uppercase">{audioFormat}</span>
                     </div>
                     {metaLoading && (
-                      <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-md border border-[#99f7ff]/20 px-2 py-0.5 flex items-center gap-1.5">
-                        <Icon.Gauge size={9} className="text-[#99f7ff] animate-spin" />
-                        <span className="text-[8px] font-['Space_Grotesk'] text-[#99f7ff] tracking-wider">ANALYZING...</span>
+                      <div className="absolute top-2 left-2 bg-[var(--bg-surface)]/80 backdrop-blur-md border border-[var(--border-strong)] px-2 py-0.5 rounded-sm flex items-center gap-1.5">
+                        <Icon.Gauge size={10} className="text-[var(--tertiary)] animate-spin" />
+                        <span className="text-[8px] font-['Work_Sans'] font-bold text-[var(--tertiary)] tracking-wider">ANALYZING</span>
                       </div>
                     )}
                   </div>
@@ -591,9 +608,9 @@ export default function DesktopPlayer() {
 
                 {/* 곡 정보 */}
                 <div className="text-center max-w-[300px]">
-                  <h2 className="font-['Space_Grotesk'] text-lg font-bold text-[#f1f3fc] truncate tracking-tight uppercase mb-1">{displayTitle}</h2>
-                  <p className="font-['Space_Grotesk'] text-sm text-[#99f7ff] truncate tracking-[0.15em] opacity-80 uppercase">{track.artist || 'Unknown Artist'}</p>
-                  {track.album && <p className="font-['Inter'] text-xs text-[#72757d] truncate mt-1">{track.album}</p>}
+                  <h2 className="font-['Noto_Serif'] text-xl font-bold text-[var(--text-main)] truncate tracking-tight mb-1">{displayTitle}</h2>
+                  <p className="font-['Work_Sans'] text-sm text-[var(--tertiary)] truncate font-medium uppercase tracking-wider">{track.artist || 'Unknown Artist'}</p>
+                  {track.album && <p className="font-['Work_Sans'] text-xs text-[var(--text-muted)] truncate mt-1.5">{track.album}</p>}
                 </div>
 
                 {/* 액션 버튼 */}
@@ -606,63 +623,63 @@ export default function DesktopPlayer() {
                         else alert('실패: ' + res.error)
                       }
                     }}
-                    className="p-2 border border-[#44484f]/50 text-[#72757d] hover:border-[#99f7ff]/30 hover:text-[#99f7ff] transition-all"
+                    className="p-2 border border-[var(--border-strong)] rounded-full text-[var(--text-muted)] hover:border-[var(--tertiary)] hover:text-[var(--tertiary)] hover:bg-[var(--tertiary)]/5 transition-all shadow-sm bg-[var(--bg-surface)]"
                   >
                     <Icon.Bookmark size={16} />
                   </button>
-                  <button onClick={toggleSleepTimer} className={`p-2 border border-[#44484f]/50 transition-all ${sleepTimer > 0 ? 'text-[#99f7ff] border-[#99f7ff]/30' : 'text-[#72757d] hover:border-[#99f7ff]/30 hover:text-[#99f7ff]'}`}>
+                  <button onClick={toggleSleepTimer} className={`p-2 border rounded-full transition-all shadow-sm bg-[var(--bg-surface)] ${sleepTimer > 0 ? 'text-[var(--tertiary)] border-[var(--tertiary)] bg-[var(--tertiary)]/10' : 'border-[var(--border-strong)] text-[var(--text-muted)] hover:border-[var(--tertiary)] hover:text-[var(--tertiary)] hover:bg-[var(--tertiary)]/5'}`}>
                     <Icon.Moon size={16} />
                   </button>
                 </div>
                 {sleepTimer > 0 && (
-                  <span className="text-[9px] font-['Space_Grotesk'] text-[#99f7ff] mt-2 tracking-wider">{sleepTimer}MIN_SLEEP</span>
+                  <span className="text-[9px] font-['Work_Sans'] font-bold text-[var(--tertiary)] mt-3 tracking-wider uppercase">{sleepTimer} min sleep</span>
                 )}
               </div>
 
               {/* 우측: 탭 콘텐츠 */}
-              <div className="flex-1 flex flex-col min-w-0 relative z-10">
+              <div className="flex-1 flex flex-col min-w-0 relative z-10 bg-[var(--bg-surface)]">
                 {/* 탭 헤더 */}
-                <div className="flex items-center gap-1 px-6 pt-4 pb-2 shrink-0 border-b border-[#99f7ff]/5">
+                <div className="flex items-center gap-1 px-8 pt-6 pb-3 shrink-0 border-b border-[var(--border-light)] bg-[var(--bg-container-low)]">
                   {(['lyrics', 'queue', 'eq'] as const).map(tab => (
                     <button 
                       key={tab}
                       onClick={() => setExpandedView(tab)}
-                      className={`px-4 py-2 text-[10px] font-['Space_Grotesk'] tracking-[0.2em] uppercase transition-all border-b-2 ${expandedView === tab ? 'text-[#99f7ff] border-[#99f7ff]' : 'text-[#72757d] border-transparent hover:text-[#a8abb3]'}`}
+                      className={`px-4 py-2 text-[11px] font-['Work_Sans'] font-bold tracking-[0.15em] uppercase transition-all rounded-md ${expandedView === tab ? 'bg-[var(--bg-container-highest)] text-[var(--text-main)] shadow-sm border border-[var(--border-strong)]' : 'text-[var(--text-muted)] border border-transparent hover:text-[var(--text-main)] hover:bg-[var(--bg-container)]'}`}
                     >
-                      {tab === 'lyrics' ? 'LYRICS' : tab === 'queue' ? 'QUEUE' : 'EQUALIZER'}
+                      {tab === 'lyrics' ? 'Lyrics' : tab === 'queue' ? 'Queue' : 'Equalizer'}
                     </button>
                   ))}
                   <div className="flex-1" />
-                  <button onClick={() => setExpanded(false)} className="p-2 text-[#72757d] hover:text-[#99f7ff] transition-colors">
+                  <button onClick={() => setExpanded(false)} className="p-2 text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-container)] rounded-md transition-colors">
                     <Icon.X size={18} />
                   </button>
                 </div>
 
                 {/* 탭 콘텐츠 */}
-                <div className="flex-1 overflow-y-auto px-6 py-4" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(153,247,255,0.15) transparent' }}>
+                <div className="flex-1 overflow-y-auto px-8 py-6 analog-scrollbar bg-[var(--bg-surface)] relative">
                   {expandedView === 'lyrics' ? (
                     /* ===== 가사 ===== */
                     <div className="text-center py-8 max-w-2xl mx-auto relative">
                       {/* 글자 크기 조절 */}
-                      <div className="sticky top-0 z-20 flex items-center justify-end gap-1 mb-4 pb-2" style={{ background: 'rgba(10,14,20,0.9)', backdropFilter: 'blur(8px)' }}>
+                      <div className="sticky top-0 z-20 flex items-center justify-end gap-1 mb-6 pb-2" style={{ background: 'linear-gradient(to bottom, var(--bg-surface) 60%, transparent)' }}>
                         <button onClick={() => setLyricsFontSize(s => Math.max(10, s - 4))}
-                          className="w-7 h-7 flex items-center justify-center font-['Space_Grotesk'] text-[10px] text-[#72757d] border border-[#44484f]/40 hover:border-[#99f7ff]/30 hover:text-[#99f7ff] transition">A-</button>
-                        <span className="font-['Space_Grotesk'] text-[9px] text-[#44484f] tracking-wider w-8 text-center">{lyricsFontSize}</span>
+                          className="w-7 h-7 flex items-center justify-center font-['Work_Sans'] text-[12px] font-bold text-[var(--text-muted)] border border-[var(--border-strong)] rounded-sm bg-[var(--bg-container)] hover:border-[var(--tertiary)] hover:text-[var(--tertiary)] transition shadow-sm">A-</button>
+                        <span className="font-['Work_Sans'] text-[11px] font-bold text-[var(--text-main)] tracking-wider w-8 text-center">{lyricsFontSize}</span>
                         <button onClick={() => setLyricsFontSize(s => Math.min(50, s + 4))}
-                          className="w-7 h-7 flex items-center justify-center font-['Space_Grotesk'] text-[10px] text-[#72757d] border border-[#44484f]/40 hover:border-[#99f7ff]/30 hover:text-[#99f7ff] transition">A+</button>
+                          className="w-7 h-7 flex items-center justify-center font-['Work_Sans'] text-[12px] font-bold text-[var(--text-muted)] border border-[var(--border-strong)] rounded-sm bg-[var(--bg-container)] hover:border-[var(--tertiary)] hover:text-[var(--tertiary)] transition shadow-sm">A+</button>
                       </div>
-                      <div className="space-y-4">
+                      <div className="space-y-5">
                       {hasLyrics ? (
                         parsedLyrics ? (
                           parsedLyrics.map((line, i) => (
                             <p 
                               key={i} 
                               ref={i === currentLyricIndex ? activeLyricRef : null}
-                              style={{ fontSize: `${lyricsFontSize}px`, ...(i === currentLyricIndex ? { textShadow: '0 0 20px rgba(153,247,255,0.4)' } : {}) }}
-                              className={`font-['Space_Grotesk'] font-bold transition-all duration-500 cursor-pointer leading-relaxed ${
+                              style={{ fontSize: `${lyricsFontSize}px` }}
+                              className={`font-['Noto_Serif'] font-bold transition-all duration-300 cursor-pointer leading-relaxed ${
                                 i === currentLyricIndex 
-                                  ? 'text-[#99f7ff] scale-[1.03] opacity-100' 
-                                  : 'text-[#44484f] hover:text-[#72757d] opacity-60 blur-[0.3px]'
+                                  ? 'text-[var(--text-main)] scale-[1.03] opacity-100' 
+                                  : 'text-[var(--text-muted)] hover:text-[var(--text-main)] opacity-50'
                               } ${line.text ? '' : 'h-4'}`}
                               onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.time }}
                             >
@@ -671,14 +688,14 @@ export default function DesktopPlayer() {
                           ))
                         ) : (
                           displayLyrics!.split('\n').map((line: string, i: number) => (
-                            <p key={i} style={{ fontSize: `${lyricsFontSize}px` }} className="font-['Inter'] text-[#a8abb3] leading-relaxed">{line}</p>
+                            <p key={i} style={{ fontSize: `${lyricsFontSize}px` }} className="font-['Noto_Serif'] text-[var(--text-muted)] leading-relaxed">{line}</p>
                           ))
                         )
                       ) : (
-                        <div className="flex flex-col items-center justify-center h-[50vh] text-[#44484f] space-y-4">
-                          <Icon.Mic2 size={48} className={`opacity-30 ${lyricsLoading ? 'animate-pulse' : ''}`} />
-                          <p className="text-xs font-['Space_Grotesk'] tracking-widest uppercase">
-                            {lyricsLoading ? 'SCANNING_LYRICS...' : 'NO_LYRICS_FOUND'}
+                        <div className="flex flex-col items-center justify-center h-[40vh] text-[var(--text-muted)] space-y-4">
+                          <Icon.Mic2 size={40} className={`opacity-40 ${lyricsLoading ? 'animate-pulse' : ''}`} />
+                          <p className="text-xs font-['Work_Sans'] font-bold tracking-widest uppercase">
+                            {lyricsLoading ? 'Searching Lyrics...' : 'No Lyrics Found'}
                           </p>
                         </div>
                       )}
@@ -686,68 +703,67 @@ export default function DesktopPlayer() {
                     </div>
                   ) : expandedView === 'queue' ? (
                     /* ===== 대기열 ===== */
-                    <div className="space-y-0.5 max-w-3xl">
-                      <div className="flex items-center justify-between mb-4 sticky top-0 py-2 z-10" style={{ background: 'rgba(10,14,20,0.95)', backdropFilter: 'blur(10px)' }}>
-                        <h3 className="font-['Space_Grotesk'] text-xs tracking-[0.3em] text-[#99f7ff] uppercase">PLAYBACK_QUEUE ({playlist.length})</h3>
+                    <div className="space-y-1.5 max-w-3xl mx-auto">
+                      <div className="flex items-center justify-between mb-4 sticky top-0 py-2 z-10 bg-[var(--bg-surface)]">
+                        <h3 className="font-['Work_Sans'] text-xs font-bold tracking-[0.15em] text-[var(--tertiary)] uppercase">Playback Queue <span className="text-[var(--text-muted)]">({playlist.length})</span></h3>
                       </div>
                       {playlist.map((t, i) => {
                         const art = t.cover_art || t.thumbnailLink || (t as any).thumbnail_link
-                        const fmt = getFormatFromMime(t.mimeType)
+                        const fmt = getFormatFromMime(t.mimeType, t.name || t.title)
                         return (
                           <div 
                             key={i}
                             ref={t.id === track.id ? activeTrackRef : null}
                             onClick={() => setTrack(t)}
-                            className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-all border-l-2 ${t.id === track.id ? 'bg-[#99f7ff]/5 border-[#99f7ff]' : 'border-transparent hover:bg-white/5 hover:border-[#99f7ff]/20'}`}
+                            className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-all rounded-md border ${t.id === track.id ? 'bg-[var(--bg-container-high)] border-[var(--border-strong)] shadow-[var(--shadow-pressed)]' : 'border-transparent hover:bg-[var(--bg-container)] hover:border-[var(--border-light)]'}`}
                           >
-                            <span className="w-6 text-center text-[11px] font-['Space_Grotesk'] text-[#72757d]">{i + 1}</span>
-                            <div className="w-9 h-9 bg-[#1b2028] border border-white/10 flex items-center justify-center shrink-0 overflow-hidden relative">
-                              <Icon.Music size={14} className="text-[#44484f] absolute" />
+                            <span className="w-6 text-center text-[11px] font-['Work_Sans'] font-bold text-[var(--text-muted)]">{i + 1}</span>
+                            <div className="w-10 h-10 bg-[var(--bg-container)] border border-[var(--border-strong)] flex items-center justify-center shrink-0 overflow-hidden relative rounded-sm shadow-[var(--shadow-ambient)]">
+                              <Icon.Music size={14} className="text-[var(--text-muted)] absolute opacity-50" />
                               {art && <img src={art} loading="lazy" referrerPolicy="no-referrer" crossOrigin="anonymous" className="w-full h-full object-cover relative z-10" onError={(e) => e.currentTarget.style.display='none'} />}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className={`font-['Space_Grotesk'] text-sm truncate tracking-tight ${t.id === track.id ? 'text-[#99f7ff] font-bold' : 'text-[#f1f3fc]'}`}>
+                              <p className={`font-['Noto_Serif'] text-sm truncate tracking-tight ${t.id === track.id ? 'text-[var(--text-main)] font-bold' : 'text-[var(--text-main)]'}`}>
                                 {t.title || t.name?.replace(/\.[^.]+$/, '')}
                               </p>
-                              <p className="text-[10px] text-[#72757d] truncate font-['Inter']">{t.artist || 'Unknown'}</p>
+                              <p className="text-[10px] text-[var(--text-muted)] truncate font-['Work_Sans'] uppercase font-medium mt-0.5">{t.artist || 'Unknown'}</p>
                             </div>
-                            <span className="text-[9px] font-['Space_Grotesk'] text-[#72757d]/50 tracking-wider">{fmt}</span>
-                            {t.id === track.id && <div className="w-1.5 h-1.5 bg-[#99f7ff] animate-pulse" />}
+                            <span className="text-[9px] font-['Work_Sans'] font-bold text-[var(--text-muted)] tracking-wider uppercase px-2 py-0.5 bg-[var(--bg-container-high)] rounded-sm border border-[var(--border-light)]">{fmt}</span>
+                            {t.id === track.id && <div className="w-2 h-2 rounded-full bg-[var(--tertiary)] shadow-[0_0_8px_var(--tertiary)] ml-2" />}
                           </div>
                         )
                       })}
                     </div>
                   ) : (
                     /* ===== 이퀄라이저 ===== */
-                    <div className="flex flex-col items-center justify-center h-full space-y-8 max-w-xl mx-auto">
-                      <h3 className="font-['Space_Grotesk'] text-xs tracking-[0.3em] text-[#99f7ff] uppercase">FREQ_CALIBRATION</h3>
-                      <div className="flex gap-8 h-52 items-end justify-center w-full">
+                    <div className="flex flex-col items-center justify-center h-full space-y-10 max-w-xl mx-auto py-10">
+                      <h3 className="font-['Work_Sans'] text-xs font-bold tracking-[0.2em] text-[var(--text-main)] uppercase">Frequency Calibration</h3>
+                      <div className="flex gap-10 h-64 items-end justify-center w-full bg-[var(--bg-container-low)] p-8 rounded-lg border border-[var(--border-light)] shadow-[var(--shadow-pressed)]">
                         {['60Hz', '230Hz', '910Hz', '3.6kHz', '14kHz'].map((label, idx) => (
-                          <div key={idx} className="flex flex-col items-center h-full gap-3">
-                            <span className="text-[10px] font-['Space_Grotesk'] text-[#72757d] tracking-wider">{label}</span>
-                            <div className="relative flex-1 w-3 bg-[#1b2028] border border-[#44484f]/30 flex items-end overflow-hidden">
-                              <div className="w-full transition-all duration-300"
+                          <div key={idx} className="flex flex-col items-center h-full gap-4">
+                            <span className="text-[10px] font-['Work_Sans'] font-bold text-[var(--text-muted)] tracking-wider">{label}</span>
+                            <div className="relative flex-1 w-4 bg-[var(--bg-container-highest)] border border-[var(--border-strong)] rounded-full flex items-end overflow-hidden shadow-[var(--shadow-pressed)]">
+                              <div className="w-full transition-all duration-300 rounded-full"
                                 style={{ 
                                   height: `${(eqGains[idx] + 12) / 24 * 100}%`,
-                                  background: 'linear-gradient(to top, rgba(0,242,255,0.2), #99f7ff)',
-                                  boxShadow: '0 0 10px rgba(153,247,255,0.4)'
+                                  background: 'var(--primary)'
                                 }} 
                               />
                               <input type="range" min="-12" max="12" step="0.1" value={eqGains[idx]}
                                 onChange={(e) => setEqGain(idx, Number(e.target.value))}
                                 className="absolute inset-0 -rotate-90 origin-center opacity-0 cursor-pointer"
-                                style={{ width: '208px', height: '12px', left: '-98px', top: '98px' }}
+                                style={{ width: '256px', height: '16px', left: '-120px', top: '120px' }}
                               />
                             </div>
-                            <span className="text-[10px] font-['Space_Grotesk'] text-[#99f7ff] w-10 text-center">
+                            <span className="text-[10px] font-['Work_Sans'] font-bold text-[var(--text-main)] w-10 text-center bg-[var(--bg-surface)] py-1 border border-[var(--border-light)] rounded-sm">
                               {eqGains[idx] > 0 ? `+${eqGains[idx].toFixed(1)}` : eqGains[idx].toFixed(1)}
                             </span>
                           </div>
                         ))}
                       </div>
                       <button onClick={() => eqGains.forEach((_, i) => setEqGain(i, 0))} 
-                        className="px-6 py-2 border border-[#44484f] text-xs font-['Space_Grotesk'] tracking-widest text-[#a8abb3] hover:border-[#99f7ff] hover:text-[#99f7ff] transition-all uppercase">
-                        RESET_EQ
+                        className="px-6 py-2 border border-[var(--border-strong)] rounded-md text-xs font-['Work_Sans'] font-bold tracking-widest text-[var(--text-main)] hover:border-[var(--tertiary)] hover:text-[var(--tertiary)] hover:bg-[var(--tertiary)]/5 transition-all shadow-sm bg-[var(--bg-surface)] uppercase">
+                        Reset EQ
                       </button>
                     </div>
                   )}
@@ -757,6 +773,8 @@ export default function DesktopPlayer() {
           </motion.div>
         )}
       </AnimatePresence>
+        </>
+      )}
     </>
   )
 }

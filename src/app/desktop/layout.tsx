@@ -6,7 +6,7 @@ import DesktopPlayer from '@/components/player/DesktopPlayer'
 
 export default function DesktopLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen text-white overflow-hidden" style={{ background: '#0a0e14' }}>
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-surface)' }}>
       {/* 1. 사이드바 (고정) */}
       <div className="w-56 flex-shrink-0 hidden md:block">
          <DesktopSidebar />

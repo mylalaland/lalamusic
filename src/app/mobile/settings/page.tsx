@@ -13,7 +13,7 @@ import {
 } from '@/app/actions/settings'
 import { getDriveFolders, getSharedFolders } from '@/app/actions/library'
 import { useSettingsStore, type AIProvider } from '@/lib/store/useSettingsStore'
-import { Wand2, Key } from 'lucide-react'
+import { Wand2, Key, Palette } from 'lucide-react'
 
 const Icon = {
   LogOut: LogOut as any,
@@ -299,79 +299,138 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 pb-32">
+    <div className="min-h-screen analog-surface text-[var(--text-main)] p-4 pb-32">
       <h1 className="text-2xl font-bold mb-8 px-2 pt-4">Settings</h1>
 
       <div className="space-y-6 max-w-md mx-auto">
         {/* 계정 정보 */}
-        <div className="bg-gray-900/50 rounded-xl p-4 flex items-center gap-4 border border-gray-800">
-          <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center"><Icon.User className="text-gray-400" /></div>
-          <div><p className="font-medium">Google Account</p><p className="text-xs text-gray-500">Connected</p></div>
+        <div className="bg-[color:var(--bg-container)]/50 rounded-xl p-4 flex items-center gap-4 border border-[var(--border-strong)]">
+          <div className="w-12 h-12 bg-[var(--bg-container-high)] rounded-full flex items-center justify-center"><Icon.User className="text-[var(--text-muted)]" /></div>
+          <div><p className="font-medium">Google Account</p><p className="text-xs text-[color:var(--text-muted)]/80">Connected</p></div>
         </div>
 
         {/* 1. Music Root 설정 */}
-        <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-800">
+        <div className="bg-[color:var(--bg-container)]/50 rounded-xl p-4 border border-[var(--border-strong)]">
           <div className="flex items-center gap-3 mb-2">
             <Icon.MapPin className="text-yellow-500" />
             <h2 className="font-bold">Music Root Folder</h2>
           </div>
-          <p className="text-xs text-gray-500 mb-4">플레이어의 최상위 폴더를 지정합니다.</p>
+          <p className="text-xs text-[color:var(--text-muted)]/80 mb-4">플레이어의 최상위 폴더를 지정합니다.</p>
           
-          <div className="bg-black/40 rounded-lg p-3 mb-4 flex items-center justify-between border border-gray-800">
+          <div className="bg-[var(--bg-container-high)] rounded-lg p-3 mb-4 flex items-center justify-between border border-[var(--border-strong)]">
             <div className="flex items-center gap-2 overflow-hidden">
                 <Icon.Folder size={16} className="text-yellow-500 shrink-0" />
-                <span className="truncate text-sm text-gray-300">
+                <span className="truncate text-sm text-[color:var(--text-main)]/80">
                     {baseFolder ? baseFolder.name : "Google Drive (전체)"}
                 </span>
             </div>
-            <button onClick={() => openPicker('BASE')} className="text-xs text-blue-400 hover:text-blue-300 shrink-0 font-bold">변경</button>
+            <button onClick={() => openPicker('BASE')} className="text-xs text-[var(--tertiary)] hover:text-[var(--tertiary-dim)] shrink-0 font-bold">변경</button>
           </div>
         </div>
 
         {/* 2. Scan Target 설정 */}
-        <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-800 relative">
+        <div className="bg-[color:var(--bg-container)]/50 rounded-xl p-4 border border-[var(--border-strong)] relative">
           {baseFolder && <div className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500/30"></div>}
           <div className="flex items-center gap-3 mb-2">
-            <Icon.Target className="text-blue-400" />
+            <Icon.Target className="text-[var(--tertiary)]" />
             <h2 className="font-bold">Scan Target</h2>
           </div>
-          <p className="text-xs text-gray-500 mb-4">실제로 라이브러리에 담을 폴더입니다.</p>
+          <p className="text-xs text-[color:var(--text-muted)]/80 mb-4">실제로 라이브러리에 담을 폴더입니다.</p>
           
-          <div className="bg-black/40 rounded-lg p-3 mb-4 flex items-center justify-between border border-gray-800">
+          <div className="bg-[var(--bg-container-high)] rounded-lg p-3 mb-4 flex items-center justify-between border border-[var(--border-strong)]">
             <div className="flex items-center gap-2 overflow-hidden">
-                <Icon.FolderSearch size={16} className="text-blue-400 shrink-0" />
-                <span className="truncate text-sm text-gray-300">
+                <Icon.FolderSearch size={16} className="text-[var(--tertiary)] shrink-0" />
+                <span className="truncate text-sm text-[color:var(--text-main)]/80">
                     {scanFolder ? scanFolder.name : (baseFolder ? `${baseFolder.name} (전체)` : "전체")}
                 </span>
             </div>
-            {scanFolder && <button onClick={() => setScanFolder(null)} className="text-xs text-red-400">해제</button>}
+            {scanFolder && <button onClick={() => setScanFolder(null)} className="text-xs text-[var(--error)]">해제</button>}
           </div>
 
-          <button onClick={() => openPicker('TARGET')} className="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-bold transition">스캔 대상 선택</button>
+          <button onClick={() => openPicker('TARGET')} className="w-full py-3 bg-[var(--tertiary)] hover:bg-[var(--tertiary-dim)] rounded-lg text-sm font-bold transition text-[var(--on-tertiary)]">스캔 대상 선택</button>
         </div>
 
+        {/* --- [NEW] APP_PREFERENCES --- */}
+        <div className="bg-[color:var(--bg-container)]/50 rounded-xl p-4 border border-[var(--border-strong)]">
+          <div className="flex items-center gap-3 mb-2">
+            <Icon.Settings className="text-[var(--tertiary)]" />
+            <h2 className="font-bold uppercase tracking-tight text-sm">App Preferences</h2>
+          </div>
+          <p className="text-xs text-[color:var(--text-muted)]/80 mb-4">플레이어 동작 설정을 관리합니다.</p>
+          
+          <div className="space-y-4">
+            <label className="flex items-center justify-between cursor-pointer group">
+              <div>
+                <div className="text-sm font-medium">Auto-Play Next Track</div>
+                <div className="text-[10px] text-[var(--text-muted)]">자동으로 다음 곡을 재생합니다.</div>
+              </div>
+              <input type="checkbox" checked={useSettingsStore.getState().autoPlayNext} 
+                onChange={(e) => useSettingsStore.getState().setAutoPlayNext(e.target.checked)}
+                className="w-4 h-4 accent-[var(--tertiary)]" />
+            </label>
+            <label className="flex items-center justify-between cursor-pointer group">
+              <div>
+                <div className="text-sm font-medium">High Quality Audio</div>
+                <div className="text-[10px] text-[var(--text-muted)]">최고 품질의 스트림을 우선합니다.</div>
+              </div>
+              <input type="checkbox" checked={useSettingsStore.getState().highQualityAudio} 
+                onChange={(e) => useSettingsStore.getState().setHighQualityAudio(e.target.checked)}
+                className="w-4 h-4 accent-[var(--tertiary)]" />
+            </label>
+          </div>
+        </div>
+
+        {/* --- [NEW] PERSONALIZATION (THEME) --- */}
+        <div className="bg-[color:var(--bg-container)]/50 rounded-xl p-4 border border-[var(--border-strong)]">
+          <div className="flex items-center gap-3 mb-2">
+            <Palette size={20} className="text-[var(--tertiary)]" />
+            <h2 className="font-bold uppercase tracking-tight text-sm">Personalization</h2>
+          </div>
+          <p className="text-xs text-[color:var(--text-muted)]/80 mb-4">테마 컬러 및 시각적 설정을 변경합니다.</p>
+          
+          <div className="grid grid-cols-5 gap-3 mb-4">
+            {['var(--tertiary)', '#ff59e3', '#00ff88', '#ffd700', '#ff5959'].map(color => (
+              <button key={color} onClick={() => useSettingsStore.getState().setThemeColor(color)}
+                className={`w-10 h-10 rounded-full border-2 transition-all ${useSettingsStore.getState().themeColor === color ? 'border-[var(--text-main)] scale-110' : 'border-transparent'}`}
+                style={{ background: color }}
+              />
+            ))}
+          </div>
+          
+          <label className="flex items-center justify-between cursor-pointer group">
+            <div>
+              <div className="text-sm font-medium">Show Lyrics</div>
+              <div className="text-[10px] text-[var(--text-muted)]">재생 화면에 가사를 표시합니다.</div>
+            </div>
+            <input type="checkbox" checked={useSettingsStore.getState().showLyrics} 
+              onChange={(e) => useSettingsStore.getState().setShowLyrics(e.target.checked)}
+              className="w-4 h-4 accent-[var(--tertiary)]" />
+          </label>
+        </div>
+
+
         {/* 3. 파일 형식 */}
-        <section className="bg-gray-900/50 rounded-2xl p-6 border border-gray-800">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-gray-200">
-            <Icon.FileAudio size={20} className="text-green-400" /> File Types
+        <section className="bg-[color:var(--bg-container)]/50 rounded-2xl p-6 border border-[var(--border-strong)]">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-[var(--text-main)]">
+            <Icon.FileAudio size={20} className="text-[var(--tertiary)]" /> File Types
           </h2>
           
           <div className="space-y-4">
-            <div className="bg-black/40 p-4 rounded-xl space-y-3 border border-white/5">
-                <p className="text-sm text-gray-400 font-medium mb-2">스캔 대상 파일 형식</p>
+            <div className="bg-[var(--bg-container-high)] p-4 rounded-xl space-y-3 border border-[var(--border-light)]">
+                <p className="text-sm text-[var(--text-muted)] font-medium mb-2">스캔 대상 파일 형식</p>
                 <div className="grid grid-cols-3 gap-2">
                     {AUDIO_FORMATS.map(ext => (
                         <button 
                             key={ext}
                             onClick={() => toggleExtension(ext)}
-                            className={`flex items-center justify-center gap-2 p-2 rounded-lg text-sm transition ${allowedExtensions.includes(ext) ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-gray-800 text-gray-500 border border-transparent'}`}
+                            className={`flex items-center justify-center gap-2 p-2 rounded-lg text-sm transition ${allowedExtensions.includes(ext) ? 'bg-[var(--tertiary)]/20 text-[var(--tertiary)] border border-[var(--tertiary)]/30' : 'bg-[var(--bg-container-high)] text-[color:var(--text-muted)]/80 border border-transparent'}`}
                         >
                             {allowedExtensions.includes(ext) ? <Icon.CheckSquare size={14} /> : <Icon.Square size={14} />}
                             {ext.toUpperCase()}
                         </button>
                     ))}
                 </div>
-                <button onClick={handleSaveExtensions} className="w-full py-2 mt-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition">
+                <button onClick={handleSaveExtensions} className="w-full py-2 mt-2 bg-[var(--tertiary)] hover:bg-[var(--tertiary-dim)] text-[var(--on-tertiary)] rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition">
                     <Icon.Save size={16} />
                     설정 저장
                 </button>
@@ -380,42 +439,42 @@ export default function SettingsPage() {
         </section>
 
         {/* [NEW] 가사 설정 섹션 */}
-        <section className="bg-gray-900/50 rounded-2xl p-6 border border-gray-800">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-gray-200">
-            <Icon.Mic2 size={20} className="text-pink-400" /> Lyrics Settings
+        <section className="bg-[color:var(--bg-container)]/50 rounded-2xl p-6 border border-[var(--border-strong)]">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-[var(--text-main)]">
+            <Icon.Mic2 size={20} className="text-[var(--tertiary)]" /> Lyrics Settings
           </h2>
           
           <div className="space-y-4">
-            <div className="bg-black/40 p-4 rounded-xl space-y-4 border border-white/5">
+            <div className="bg-[var(--bg-container-high)] p-4 rounded-xl space-y-4 border border-[var(--border-light)]">
                 {/* 우선순위 설정 */}
                 <div>
-                    <p className="text-sm text-gray-400 font-medium mb-3">가사 표시 우선순위 (높은 순)</p>
+                    <p className="text-sm text-[var(--text-muted)] font-medium mb-3">가사 표시 우선순위 (높은 순)</p>
                     <div className="space-y-2">
                         {(lyricsSettings.order || []).map((id, index) => {
                             const info = getLabel(id)
                             return (
-                                <div key={id} className="flex items-center justify-between bg-gray-800/50 p-3 rounded-lg border border-gray-700/50">
+                                <div key={id} className="flex items-center justify-between bg-[color:var(--bg-container-high)]/50 p-3 rounded-lg border border-[color:var(--border-strong)]/50">
                                     <div className="flex items-center gap-3">
                                         <span className="text-lg">{info.icon}</span>
-                                        <span className="text-sm font-medium text-gray-200">{info.text}</span>
+                                        <span className="text-sm font-medium text-[var(--text-main)]">{info.text}</span>
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <button onClick={() => moveOrder(index, 'up')} disabled={index === 0} className="p-1 hover:bg-gray-700 rounded text-gray-400 disabled:opacity-30"><Icon.ArrowUp size={14}/></button>
-                                        <button onClick={() => moveOrder(index, 'down')} disabled={index === lyricsSettings.order.length - 1} className="p-1 hover:bg-gray-700 rounded text-gray-400 disabled:opacity-30"><Icon.ArrowDown size={14}/></button>
+                                        <button onClick={() => moveOrder(index, 'up')} disabled={index === 0} className="p-1 hover:bg-[var(--bg-container-highest)] rounded text-[var(--text-muted)] disabled:opacity-30"><Icon.ArrowUp size={14}/></button>
+                                        <button onClick={() => moveOrder(index, 'down')} disabled={index === lyricsSettings.order.length - 1} className="p-1 hover:bg-[var(--bg-container-highest)] rounded text-[var(--text-muted)] disabled:opacity-30"><Icon.ArrowDown size={14}/></button>
                                     </div>
                                 </div>
                             )
                         })}
                     </div>
-                    <p className="text-[11px] text-gray-500 mt-3 px-1 leading-relaxed">
+                    <p className="text-[11px] text-[color:var(--text-muted)]/80 mt-3 px-1 leading-relaxed">
                         * 위에서부터 순서대로 가사를 찾습니다. 원하는 항목을 위로 올려주세요.
                     </p>
                 </div>
 
                 {/* 자동 검색 토글 */}
                 <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300">가사 없을 시 자동 검색</span>
-                    <button onClick={() => handleSaveLyricsSettings({...lyricsSettings, autoSearch: !lyricsSettings.autoSearch})} className={`w-12 h-6 rounded-full relative transition ${lyricsSettings.autoSearch ? 'bg-green-500' : 'bg-gray-700'}`}>
+                    <span className="text-sm text-[color:var(--text-main)]/80">가사 없을 시 자동 검색</span>
+                    <button onClick={() => handleSaveLyricsSettings({...lyricsSettings, autoSearch: !lyricsSettings.autoSearch})} className={`w-12 h-6 rounded-full relative transition ${lyricsSettings.autoSearch ? 'bg-[var(--success)]' : 'bg-[var(--bg-container-highest)]'}`}>
                         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${lyricsSettings.autoSearch ? 'left-7' : 'left-1'}`} />
                     </button>
                 </div>
@@ -424,21 +483,21 @@ export default function SettingsPage() {
         </section>
 
         {/* AI Configuration Section */}
-        <section className="bg-gray-900/50 rounded-2xl p-6 border border-gray-800">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-gray-200">
-            <Wand2 size={20} className="text-blue-400" /> AI Settings
+        <section className="bg-[color:var(--bg-container)]/50 rounded-2xl p-6 border border-[var(--border-strong)]">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-[var(--text-main)]">
+            <Wand2 size={20} className="text-[var(--tertiary)]" /> AI Settings
           </h2>
           
           <div className="space-y-4">
-            <div className="bg-black/40 p-4 rounded-xl space-y-4 border border-white/5">
+            <div className="bg-[var(--bg-container-high)] p-4 rounded-xl space-y-4 border border-[var(--border-light)]">
                 <div>
-                   <p className="text-sm text-gray-400 font-medium mb-3">AI Model Provider</p>
-                   <div className="flex bg-gray-800/50 rounded-lg p-1">
+                   <p className="text-sm text-[var(--text-muted)] font-medium mb-3">AI Model Provider</p>
+                   <div className="flex bg-[color:var(--bg-container-high)]/50 rounded-lg p-1">
                       {(['gemini', 'openai', 'claude'] as AIProvider[]).map(provider => (
                         <button 
                           key={provider}
                           onClick={() => setAiProvider(provider)}
-                          className={`flex-1 py-2 text-xs font-bold rounded-md capitalize transition ${aiProvider === provider ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                          className={`flex-1 py-2 text-xs font-bold rounded-md capitalize transition ${aiProvider === provider ? 'bg-[var(--tertiary)] text-[var(--on-tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
                         >
                           {provider}
                         </button>
@@ -447,17 +506,17 @@ export default function SettingsPage() {
                 </div>
                 
                 <div>
-                  <p className="text-sm text-gray-400 font-medium mb-3 capitalize">{aiProvider} API Key</p>
+                  <p className="text-sm text-[var(--text-muted)] font-medium mb-3 capitalize">{aiProvider} API Key</p>
                   <div className="relative mb-3">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Key size={14} className="text-gray-500" />
+                        <Key size={14} className="text-[color:var(--text-muted)]/80" />
                       </div>
                       <input 
                         type="password"
                         value={apiKeyInput}
                         onChange={(e) => setApiKeyInput(e.target.value)}
                         placeholder={`Enter API Key...`}
-                        className="w-full bg-gray-800/50 border border-gray-700 rounded-lg py-3 pl-9 pr-4 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-blue-500 transition"
+                        className="w-full bg-[color:var(--bg-container-high)]/50 border border-[var(--border-strong)] rounded-lg py-3 pl-9 pr-4 text-sm text-[var(--text-main)] placeholder:text-[color:var(--text-muted)]/60 focus:outline-none focus:border-[var(--tertiary)] transition"
                       />
                   </div>
                   <button 
@@ -466,44 +525,44 @@ export default function SettingsPage() {
                         setSaveMessage("AI 설정이 저장되었습니다.")
                         setTimeout(() => setSaveMessage(null), 2000)
                     }}
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition"
+                    className="w-full py-3 bg-[var(--tertiary)] hover:bg-[var(--tertiary-dim)] text-[var(--on-tertiary)] rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition"
                   >
                     <Icon.Save size={16} />
                     저장하기
                   </button>
 
                   {/* 🟢 Provider-specific API Key Guide */}
-                  <div className="mt-4 bg-gray-800/30 rounded-xl p-4 border border-white/5">
-                    <p className="text-xs text-blue-400 font-bold mb-3 flex items-center gap-2">
+                  <div className="mt-4 bg-[color:var(--bg-container-high)]/30 rounded-xl p-4 border border-[var(--border-light)]">
+                    <p className="text-xs text-[var(--tertiary)] font-bold mb-3 flex items-center gap-2">
                       💡 API 키 발급 방법
                     </p>
                     
                     {aiProvider === 'gemini' && (
                       <div className="space-y-2.5">
                         <div className="flex gap-2.5 items-start">
-                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">1</span>
-                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                          <span className="text-[10px] text-[var(--tertiary)] font-bold bg-[var(--tertiary)]/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">1</span>
+                          <p className="text-[12px] text-[color:var(--text-main)]/80 leading-relaxed">
                             <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer"
-                              className="text-blue-400 underline underline-offset-2">
+                              className="text-[var(--tertiary)] underline underline-offset-2">
                               Google AI Studio
                             </a>에 접속 (가입 및 프로젝트 만들기 필요)
                           </p>
                         </div>
                         <div className="flex gap-2.5 items-start">
-                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">2</span>
-                          <p className="text-[12px] text-gray-300 leading-relaxed">
-                            <strong className="text-white">"Create API Key"</strong> 클릭
+                          <span className="text-[10px] text-[var(--tertiary)] font-bold bg-[var(--tertiary)]/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">2</span>
+                          <p className="text-[12px] text-[color:var(--text-main)]/80 leading-relaxed">
+                            <strong className="text-[var(--text-main)]">"Create API Key"</strong> 클릭
                           </p>
                         </div>
                         <div className="flex gap-2.5 items-start">
-                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">3</span>
-                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                          <span className="text-[10px] text-[var(--tertiary)] font-bold bg-[var(--tertiary)]/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">3</span>
+                          <p className="text-[12px] text-[color:var(--text-main)]/80 leading-relaxed">
                             생성된 키를 복사해서 위에 붙여넣기
                           </p>
                         </div>
                         <div className="bg-green-500/10 rounded-lg p-2.5 mt-1 border border-green-500/20">
-                          <p className="text-[11px] text-gray-400 leading-relaxed">
-                            ✨ <strong className="text-green-400">추천!</strong> Gemini는 무료 사용량이 넉넉해서 개인용으로 좋아요.
+                          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                            ✨ <strong className="text-[var(--success)]">추천!</strong> Gemini는 무료 사용량이 넉넉해서 개인용으로 좋아요.
                           </p>
                         </div>
                       </div>
@@ -512,29 +571,29 @@ export default function SettingsPage() {
                     {aiProvider === 'openai' && (
                       <div className="space-y-2.5">
                         <div className="flex gap-2.5 items-start">
-                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">1</span>
-                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                          <span className="text-[10px] text-[var(--tertiary)] font-bold bg-[var(--tertiary)]/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">1</span>
+                          <p className="text-[12px] text-[color:var(--text-main)]/80 leading-relaxed">
                             <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer"
-                              className="text-blue-400 underline underline-offset-2">
+                              className="text-[var(--tertiary)] underline underline-offset-2">
                               OpenAI Platform
                             </a>에 접속 (가입 후 프로젝트 생성 & 결제수단 등록 필요)
                           </p>
                         </div>
                         <div className="flex gap-2.5 items-start">
-                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">2</span>
-                          <p className="text-[12px] text-gray-300 leading-relaxed">
-                            <strong className="text-white">"+ Create new secret key"</strong> 클릭
+                          <span className="text-[10px] text-[var(--tertiary)] font-bold bg-[var(--tertiary)]/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">2</span>
+                          <p className="text-[12px] text-[color:var(--text-main)]/80 leading-relaxed">
+                            <strong className="text-[var(--text-main)]">"+ Create new secret key"</strong> 클릭
                           </p>
                         </div>
                         <div className="flex gap-2.5 items-start">
-                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">3</span>
-                          <p className="text-[12px] text-gray-300 leading-relaxed">
-                            <strong className="text-white">sk-</strong>로 시작하는 키를 복사해서 위에 붙여넣기
+                          <span className="text-[10px] text-[var(--tertiary)] font-bold bg-[var(--tertiary)]/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">3</span>
+                          <p className="text-[12px] text-[color:var(--text-main)]/80 leading-relaxed">
+                            <strong className="text-[var(--text-main)]">sk-</strong>로 시작하는 키를 복사해서 위에 붙여넣기
                           </p>
                         </div>
                         <div className="bg-yellow-500/10 rounded-lg p-2.5 mt-1 border border-yellow-500/20">
-                          <p className="text-[11px] text-gray-400 leading-relaxed">
-                            ⚡ 사용량에 따라 과금됩니다. <strong className="text-yellow-400">월 $5 이내</strong>로 충분해요.
+                          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                            ⚡ 사용량에 따라 과금됩니다. <strong className="text-[var(--tertiary)]">월 $5 이내</strong>로 충분해요.
                           </p>
                         </div>
                       </div>
@@ -543,36 +602,36 @@ export default function SettingsPage() {
                     {aiProvider === 'claude' && (
                       <div className="space-y-2.5">
                         <div className="flex gap-2.5 items-start">
-                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">1</span>
-                          <p className="text-[12px] text-gray-300 leading-relaxed">
+                          <span className="text-[10px] text-[var(--tertiary)] font-bold bg-[var(--tertiary)]/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">1</span>
+                          <p className="text-[12px] text-[color:var(--text-main)]/80 leading-relaxed">
                             <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer"
-                              className="text-blue-400 underline underline-offset-2">
+                              className="text-[var(--tertiary)] underline underline-offset-2">
                               Anthropic Console
                             </a>에 접속 (가입 후 프로젝트 생성 필요)
                           </p>
                         </div>
                         <div className="flex gap-2.5 items-start">
-                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">2</span>
-                          <p className="text-[12px] text-gray-300 leading-relaxed">
-                            <strong className="text-white">"Create Key"</strong> 클릭
+                          <span className="text-[10px] text-[var(--tertiary)] font-bold bg-[var(--tertiary)]/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">2</span>
+                          <p className="text-[12px] text-[color:var(--text-main)]/80 leading-relaxed">
+                            <strong className="text-[var(--text-main)]">"Create Key"</strong> 클릭
                           </p>
                         </div>
                         <div className="flex gap-2.5 items-start">
-                          <span className="text-[10px] text-blue-400 font-bold bg-blue-500/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">3</span>
-                          <p className="text-[12px] text-gray-300 leading-relaxed">
-                            <strong className="text-white">sk-ant-</strong>로 시작하는 키를 복사해서 위에 붙여넣기
+                          <span className="text-[10px] text-[var(--tertiary)] font-bold bg-[var(--tertiary)]/20 w-5 h-5 flex items-center justify-center rounded-full shrink-0">3</span>
+                          <p className="text-[12px] text-[color:var(--text-main)]/80 leading-relaxed">
+                            <strong className="text-[var(--text-main)]">sk-ant-</strong>로 시작하는 키를 복사해서 위에 붙여넣기
                           </p>
                         </div>
                         <div className="bg-yellow-500/10 rounded-lg p-2.5 mt-1 border border-yellow-500/20">
-                          <p className="text-[11px] text-gray-400 leading-relaxed">
-                            ⚡ 사용량에 따라 과금됩니다. <strong className="text-yellow-400">월 $5 이내</strong>로 충분해요.
+                          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                            ⚡ 사용량에 따라 과금됩니다. <strong className="text-[var(--tertiary)]">월 $5 이내</strong>로 충분해요.
                           </p>
                         </div>
                       </div>
                     )}
                   </div>
 
-                  <p className="text-[11px] text-gray-500 mt-3 leading-relaxed flex items-start gap-1.5">
+                  <p className="text-[11px] text-[color:var(--text-muted)]/80 mt-3 leading-relaxed flex items-start gap-1.5">
                     <span>🔒</span>
                     API 키는 브라우저 로컬 저장소에만 보관되며, 선택한 AI 서비스에만 직접 전송됩니다. 서버에 저장되지 않습니다.
                   </p>
@@ -582,20 +641,20 @@ export default function SettingsPage() {
         </section>
 
         {/* 라이브러리 관리 섹션 */}
-        <section className="bg-gray-900/50 rounded-2xl p-6 border border-gray-800">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-gray-200">
-            <Icon.Database size={20} className="text-blue-400" /> 라이브러리 관리
+        <section className="bg-[color:var(--bg-container)]/50 rounded-2xl p-6 border border-[var(--border-strong)]">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-[var(--text-main)]">
+            <Icon.Database size={20} className="text-[var(--tertiary)]" /> 라이브러리 관리
           </h2>
           
           <div className="space-y-4">
             <button 
               onClick={handleResetLibrary}
-              className="w-full py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition font-medium border border-red-500/20 flex items-center justify-center gap-2"
+              className="w-full py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-[var(--text-main)] rounded-xl transition font-medium border border-red-500/20 flex items-center justify-center gap-2"
             >
               <Icon.Trash2 size={20} />
               모든 노래 및 폴더 초기화
             </button>
-            <p className="text-xs text-gray-500 text-center leading-relaxed">
+            <p className="text-xs text-[color:var(--text-muted)]/80 text-center leading-relaxed">
               DB에 저장된 노래 정보와 폴더 구조가 삭제됩니다.<br/>
               (실제 구글 드라이브 파일은 삭제되지 않습니다)
             </p>
@@ -603,20 +662,20 @@ export default function SettingsPage() {
         </section>
 
         {/* 플레이리스트 관리 섹션 */}
-        <section className="bg-gray-900/50 rounded-2xl p-6 border border-gray-800">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-gray-200">
-            <Icon.ListMusic size={20} className="text-purple-400" /> 플레이리스트 관리
+        <section className="bg-[color:var(--bg-container)]/50 rounded-2xl p-6 border border-[var(--border-strong)]">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-[var(--text-main)]">
+            <Icon.ListMusic size={20} className="text-[var(--tertiary)]" /> 플레이리스트 관리
           </h2>
           
           <div className="space-y-4">
             <button 
               onClick={handleResetPlaylists}
-              className="w-full py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition font-medium border border-red-500/20 flex items-center justify-center gap-2"
+              className="w-full py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-[var(--text-main)] rounded-xl transition font-medium border border-red-500/20 flex items-center justify-center gap-2"
             >
               <Icon.RefreshCw size={20} />
               모든 플레이리스트 삭제
             </button>
-            <p className="text-xs text-gray-500 text-center">
+            <p className="text-xs text-[color:var(--text-muted)]/80 text-center">
               생성한 모든 플레이리스트가 영구적으로 삭제됩니다.
             </p>
           </div>
@@ -624,40 +683,40 @@ export default function SettingsPage() {
 
         {/* 초기화 및 로그아웃 */}
         <div className="flex gap-2 pt-4">
-            <button onClick={handleResetFolder} className="flex-1 py-4 bg-gray-800 hover:bg-gray-700 hover:text-white transition rounded-xl text-gray-400 text-sm font-bold">스캔 설정 초기화</button>
-            <button onClick={handleLogout} className="flex-1 py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition rounded-xl flex items-center justify-center gap-2 border border-red-500/20 font-bold"><Icon.LogOut size={18} /> Logout</button>
+            <button onClick={handleResetFolder} className="flex-1 py-4 bg-[var(--bg-container-high)] hover:bg-[var(--bg-container-highest)] hover:text-[var(--text-main)] transition rounded-xl text-[var(--text-muted)] text-sm font-bold">스캔 설정 초기화</button>
+            <button onClick={handleLogout} className="flex-1 py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-[var(--text-main)] transition rounded-xl flex items-center justify-center gap-2 border border-red-500/20 font-bold"><Icon.LogOut size={18} /> Logout</button>
         </div>
       </div>
 
       {/* --- 통합 폴더 선택 모달 --- */}
       {showFolderPicker && (
-        <div className="fixed inset-0 bg-black/90 z-50 flex flex-col animate-in fade-in">
-            <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900">
+        <div className="fixed inset-0 bg-[color:var(--bg-surface)]/90 z-50 flex flex-col animate-in fade-in">
+            <div className="p-4 border-b border-[var(--border-strong)] flex items-center justify-between bg-[var(--bg-container)]">
                 <div>
                     <h3 className="font-bold text-lg">{pickerMode === 'BASE' ? 'Music Root 설정' : '스캔 대상 선택'}</h3>
-                    <p className="text-xs text-gray-400">{pickerMode === 'BASE' ? '최상위 폴더를 지정합니다.' : `"${baseFolder ? baseFolder.name : 'Root'}" 내부에서 선택`}</p>
+                    <p className="text-xs text-[var(--text-muted)]">{pickerMode === 'BASE' ? '최상위 폴더를 지정합니다.' : `"${baseFolder ? baseFolder.name : 'Root'}" 내부에서 선택`}</p>
                 </div>
-                <button onClick={() => setShowFolderPicker(false)} className="text-gray-400 p-2">✕</button>
+                <button onClick={() => setShowFolderPicker(false)} className="text-[var(--text-muted)] p-2">✕</button>
             </div>
             
-            <div className="p-3 bg-gray-800 text-sm text-gray-300 flex items-center gap-2 shadow-md">
-                <Icon.Folder size={16} className={pickerMode === 'BASE' ? 'text-yellow-500' : 'text-blue-400'} />
+            <div className="p-3 bg-[var(--bg-container-high)] text-sm text-[color:var(--text-main)]/80 flex items-center gap-2 shadow-md">
+                <Icon.Folder size={16} className={pickerMode === 'BASE' ? 'text-yellow-500' : 'text-[var(--tertiary)]'} />
                 <span className="font-bold truncate">{currentPickerFolder.name}</span>
                 
                 {/* [NEW] 현재 폴더 선택 버튼 (Root 선택 가능) */}
                 <button 
                     onClick={() => handleConfirmSelect()} 
-                    className={`ml-auto px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap ${pickerMode === 'BASE' ? 'bg-yellow-600 hover:bg-yellow-500' : 'bg-blue-600 hover:bg-blue-500'}`}
+                    className={`ml-auto px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap bg-[var(--tertiary)] text-[var(--on-tertiary)] hover:bg-[var(--tertiary-dim)]`}
                 >
                     현재 폴더 선택
                 </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-2">
-                {pickerLoading ? <div className="text-center py-20 text-gray-500">로딩 중...</div> : (
+                {pickerLoading ? <div className="text-center py-20 text-[color:var(--text-muted)]/80">로딩 중...</div> : (
                     <div className="space-y-1">
                         {canGoUp() && (
-                            <button onClick={handleGoBack} className="w-full p-3 text-left hover:bg-gray-800 rounded-lg flex items-center gap-3 text-gray-400 transition">
+                            <button onClick={handleGoBack} className="w-full p-3 text-left hover:bg-[var(--bg-container-high)] rounded-lg flex items-center gap-3 text-[var(--text-muted)] transition">
                                 <div className="w-8 flex justify-center"><Icon.ChevronRight className="rotate-180" size={18} /></div>
                                 <span className="font-medium">.. (상위 폴더)</span>
                             </button>
@@ -665,24 +724,24 @@ export default function SettingsPage() {
 
                         {/* [NEW] 공유 문서함 진입 버튼 (Root일 때만 표시) */}
                         {currentPickerFolder.id === 'root' && (
-                            <div className="w-full p-2 hover:bg-gray-800 rounded-lg flex items-center justify-between group transition border border-dashed border-gray-700 mb-2">
+                            <div className="w-full p-2 hover:bg-[var(--bg-container-high)] rounded-lg flex items-center justify-between group transition border border-dashed border-[var(--border-strong)] mb-2">
                                 <button onClick={() => handleNavigate({ id: 'shared-root', name: '공유 문서함' })} className="flex-1 flex items-center gap-3 overflow-hidden text-left py-1">
-                                    <Icon.User size={24} className="text-green-400" />
+                                    <Icon.User size={24} className="text-[var(--tertiary)]" />
                                     <span className="truncate text-sm font-medium">공유 문서함 (Shared with me)</span>
                                 </button>
-                                <button onClick={() => handleNavigate({ id: 'shared-root', name: '공유 문서함' })} className="p-2 text-gray-500 hover:text-white"><Icon.ChevronRight size={20} /></button>
+                                <button onClick={() => handleNavigate({ id: 'shared-root', name: '공유 문서함' })} className="p-2 text-[color:var(--text-muted)]/80 hover:text-[var(--text-main)]"><Icon.ChevronRight size={20} /></button>
                             </div>
                         )}
 
                         {pickerFolders.map(folder => (
-                            <div key={folder.id} className="w-full p-2 hover:bg-gray-800 rounded-lg flex items-center justify-between group transition">
+                            <div key={folder.id} className="w-full p-2 hover:bg-[var(--bg-container-high)] rounded-lg flex items-center justify-between group transition">
                                 <button onClick={() => handleNavigate({ id: folder.id, name: folder.name })} className="flex-1 flex items-center gap-3 overflow-hidden text-left py-1">
-                                    <Icon.Folder size={24} className={pickerMode === 'BASE' ? 'text-yellow-500' : 'text-blue-400'} fill="currentColor" fillOpacity={0.2} />
+                                    <Icon.Folder size={24} className={pickerMode === 'BASE' ? 'text-yellow-500' : 'text-[var(--tertiary)]'} fill="currentColor" fillOpacity={0.2} />
                                     <span className="truncate text-sm font-medium">{folder.name}</span>
                                 </button>
                                 <div className="flex items-center gap-2">
-                                    <button onClick={() => handleConfirmSelect({ id: folder.id, name: folder.name })} className={`px-3 py-1.5 rounded text-xs font-bold transition ${pickerMode === 'BASE' ? 'bg-yellow-600' : 'bg-blue-600'}`}>선택</button>
-                                    <button onClick={() => handleNavigate({ id: folder.id, name: folder.name })} className="p-2 text-gray-500 hover:text-white"><Icon.ChevronRight size={20} /></button>
+                                    <button onClick={() => handleConfirmSelect({ id: folder.id, name: folder.name })} className={`px-3 py-1.5 rounded text-xs font-bold transition bg-[var(--tertiary)] text-[var(--on-tertiary)] hover:bg-[var(--tertiary-dim)]`}>선택</button>
+                                    <button onClick={() => handleNavigate({ id: folder.id, name: folder.name })} className="p-2 text-[color:var(--text-muted)]/80 hover:text-[var(--text-main)]"><Icon.ChevronRight size={20} /></button>
                                 </div>
                             </div>
                         ))}
@@ -694,7 +753,7 @@ export default function SettingsPage() {
 
       {/* 저장 알림 토스트 */}
       {saveMessage && (
-          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-white/10 backdrop-blur-md border border-white/20 text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl animate-in fade-in slide-in-from-bottom-4 z-50">
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-[var(--bg-container-highest)] backdrop-blur-md border border-[var(--border-strong)] text-[var(--text-main)] px-4 py-2 rounded-full text-sm font-bold shadow-xl animate-in fade-in slide-in-from-bottom-4 z-50">
               {saveMessage}
           </div>
       )}

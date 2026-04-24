@@ -257,36 +257,36 @@ export default function ConnectPage() {
   // [NEW] 초기화 중일 때는 로딩 화면만 표시 (깜빡임 방지)
   if (isInitializing) {
       return (
-          <div className="pb-32 bg-black min-h-screen text-white flex items-center justify-center">
-              <Icon.Loader2 className="animate-spin text-gray-500" size={32} />
+          <div className="pb-32 analog-surface min-h-screen text-[var(--text-main)] flex items-center justify-center">
+              <Icon.Loader2 className="animate-spin text-[color:var(--text-muted)]/80" size={32} />
           </div>
       )
   }
 
   return (
-    <div className="pb-32 bg-black min-h-screen text-white relative">
+    <div className="pb-32 analog-surface min-h-screen text-[var(--text-main)] relative">
       {/* AI 로딩 오버레이 */}
       {isAiProcessing && (
         // [FIX] fixed로 변경하여 화면 중앙 고정, z-40으로 탭바(z-50)보다 뒤에 배치하여 네비게이션 가능하게 함
-        <div className="fixed inset-0 z-40 bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm">
-            <Icon.Sparkles size={48} className="text-purple-500 animate-spin mb-4" />
-            <p className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 animate-pulse">
+        <div className="fixed inset-0 z-40 bg-[color:var(--bg-surface)]/80 flex flex-col items-center justify-center backdrop-blur-sm">
+            <Icon.Sparkles size={48} className="text-[var(--tertiary)] animate-spin mb-4" />
+            <p className="text-lg font-bold text-[var(--tertiary)] animate-pulse">
                 AI가 노래를 고르고 있어요...
             </p>
         </div>
       )}
 
       {/* 헤더 영역 */}
-      <div className="sticky top-0 bg-black/90 backdrop-blur-md z-20 border-b border-gray-800 h-[60px] flex items-center px-4">
+      <div className="sticky top-0 bg-[color:var(--bg-surface)]/90 backdrop-blur-md z-20 border-b border-[var(--border-strong)] h-[60px] flex items-center px-4">
         {searchMode ? (
           <form onSubmit={handleSearch} className="flex-1 flex items-center gap-3 animate-in fade-in">
-            <Icon.Sparkles size={20} className="text-purple-400 animate-pulse" />
+            <Icon.Sparkles size={20} className="text-[var(--tertiary)] animate-pulse" />
             <input 
               type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="어떤 노래를 찾으시나요?" autoFocus
-              className="flex-1 bg-transparent border-none outline-none text-white placeholder-gray-500"
+              className="flex-1 bg-transparent border-none outline-none text-[var(--text-main)] placeholder-[var(--text-muted)]"
             />
-            <button type="button" onClick={() => { setSearchMode(false); setSearchQuery(''); }}><Icon.X size={20} className="text-gray-400"/></button>
+            <button type="button" onClick={() => { setSearchMode(false); setSearchQuery(''); }}><Icon.X size={20} className="text-[var(--text-muted)]"/></button>
           </form>
         ) : (
           <div className="flex items-center justify-between w-full overflow-hidden">
@@ -294,15 +294,15 @@ export default function ConnectPage() {
             <div className="flex-1 flex items-center overflow-x-auto scrollbar-hide mr-2 mask-linear-fade">
                {path.map((folder, index) => (
                    <div key={folder.id} className="flex items-center shrink-0">
-                       {index > 0 && <Icon.ChevronRight size={14} className="text-gray-600 mx-1" />}
+                       {index > 0 && <Icon.ChevronRight size={14} className="text-[color:var(--text-muted)]/60 mx-1" />}
                        
                        <button 
                          onClick={() => handleJumpTo(index)}
                          className={`
                             flex items-center gap-1.5 py-1 px-2 rounded-lg transition text-sm whitespace-nowrap
                             ${index === path.length - 1 
-                                ? 'text-white font-bold bg-white/10 pointer-events-none' // 현재 폴더
-                                : 'text-gray-400 hover:text-white hover:bg-white/5' // 상위 폴더
+                                ? 'text-[var(--text-main)] font-bold bg-[var(--bg-container-highest)] pointer-events-none' // 현재 폴더
+                                : 'text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-container-high)]' // 상위 폴더
                             }
                          `}
                        >
@@ -315,13 +315,13 @@ export default function ConnectPage() {
             
             <div className="flex items-center gap-1 shrink-0">
                 {isAiFiltered && (
-                    <button onClick={resetFilter} className="p-2 bg-gray-800 rounded-full text-gray-400 hover:text-white"><Icon.RefreshCcw size={18}/></button>
+                    <button onClick={resetFilter} className="p-2 bg-[var(--bg-container-high)] rounded-full text-[var(--text-muted)] hover:text-[var(--text-main)]"><Icon.RefreshCcw size={18}/></button>
                 )}
                 {/* [복구됨] 뷰 모드 토글 */}
-                <button onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')} className="p-2 text-gray-400 hover:text-white">
+                <button onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')} className="p-2 text-[var(--text-muted)] hover:text-[var(--text-main)]">
                     {viewMode === 'list' ? <Icon.Grid size={20}/> : <Icon.List size={20}/>}
                 </button>
-                <button onClick={() => setSearchMode(true)} className="p-2 text-blue-400 hover:bg-gray-800 rounded-full"><Icon.Search size={20}/></button>
+                <button onClick={() => setSearchMode(true)} className="p-2 text-[var(--tertiary)] hover:bg-[var(--bg-container-high)] rounded-full"><Icon.Search size={20}/></button>
             </div>
           </div>
         )}
@@ -330,11 +330,11 @@ export default function ConnectPage() {
       {/* 컨텐츠 리스트 */}
       <div className={`p-2 ${viewMode === 'grid' ? 'grid grid-cols-3 gap-2' : 'space-y-1'}`}>
         {loading ? (
-            <div className="col-span-full text-center py-20 text-gray-500 flex flex-col items-center">
+            <div className="col-span-full text-center py-20 text-[color:var(--text-muted)]/80 flex flex-col items-center">
                 <Icon.Loader2 className="animate-spin mb-2"/> <span>Loading...</span>
             </div>
         ) : items.length === 0 ? (
-            <div className="col-span-full text-center py-20 text-gray-600">
+            <div className="col-span-full text-center py-20 text-[color:var(--text-muted)]/60">
                 {isAiFiltered ? "추천된 곡이 없습니다 😅" : "빈 폴더입니다"}
             </div>
         ) : (
@@ -345,74 +345,74 @@ export default function ConnectPage() {
                     className={`
                         cursor-pointer active:scale-95 transition-transform 
                         ${viewMode === 'list' 
-                            ? 'flex items-center gap-3 p-3 hover:bg-white/5 border-b border-gray-900/50 rounded-lg' 
-                            : 'flex flex-col items-center p-2 hover:bg-white/5 rounded-xl aspect-[3/4] border border-transparent hover:border-gray-800'
+                            ? 'flex items-center gap-3 p-3 hover:bg-[var(--bg-container-high)] border-b border-[color:var(--border-light)]/50 rounded-lg' 
+                            : 'flex flex-col items-center p-2 hover:bg-[var(--bg-container-high)] rounded-xl aspect-[3/4] border border-transparent hover:border-[var(--border-strong)]'
                         }
                     `}
                 >
                     {/* 아이콘/썸네일 영역 */}
                     <div className={`
-                        flex items-center justify-center bg-gray-900 rounded-xl overflow-hidden shrink-0 text-gray-500 relative
+                        flex items-center justify-center bg-[var(--bg-container)] rounded-xl overflow-hidden shrink-0 text-[color:var(--text-muted)]/80 relative
                         ${viewMode === 'list' ? 'w-10 h-10' : 'w-full aspect-square mb-2'}
                     `}>
                         {isAiFiltered && (
-                            <div className="absolute top-0 right-0 bg-purple-600 p-0.5 rounded-bl-lg z-10"><Icon.Sparkles size={10} className="text-white" /></div>
+                            <div className="absolute top-0 right-0 bg-[var(--tertiary)] p-0.5 rounded-bl-lg z-10"><Icon.Sparkles size={10} className="text-[var(--text-main)]" /></div>
                         )}
 
                         {item.mimeType === 'application/vnd.google-apps.folder' ? (
-                            <Icon.Folder size={viewMode === 'list' ? 20 : 32} className="text-blue-400" fill="currentColor" fillOpacity={0.2} />
+                            <Icon.Folder size={viewMode === 'list' ? 20 : 32} className="text-[var(--tertiary)]" fill="currentColor" fillOpacity={0.2} />
                         ) : (
                             <>
                                 {/* [FIX] 기본 아이콘을 배경에 깔고, 이미지가 있으면 위에 덮음 (이미지 로딩 실패 시 아이콘 보임) */}
-                                <Icon.Music size={viewMode === 'list' ? 20 : 32} className="absolute text-gray-600" />
+                                <Icon.Music size={viewMode === 'list' ? 20 : 32} className="absolute text-[color:var(--text-muted)]/60" />
                                 {item.thumbnailLink && (
                                     <img 
                                         src={item.thumbnailLink} 
                                         alt={item.name}
                                         referrerPolicy="no-referrer"
                                     crossOrigin="anonymous"
-                                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 relative z-10 bg-gray-900"
+                                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 relative z-10 bg-[var(--bg-container)]"
                                         onError={(e) => e.currentTarget.style.display = 'none'}
                                     />
                                 )}
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 z-20"><Icon.Play size={12} fill="white"/></div>
+                                <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg-container)] opacity-0 group-hover:opacity-100 z-20"><Icon.Play size={12} fill="white"/></div>
                             </>
                         )}
                     </div>
 
                     {/* 텍스트 영역 */}
                     <div className={`min-w-0 ${viewMode === 'list' ? 'flex-1' : 'w-full text-center'}`}>
-                        <p className={`font-medium truncate text-gray-200 ${viewMode === 'list' ? 'text-sm' : 'text-xs'}`}>
+                        <p className={`font-medium truncate text-[var(--text-main)] ${viewMode === 'list' ? 'text-sm' : 'text-xs'}`}>
                             {item.name.replace(/\.(mp3|wav|flac|m4a)$/i, '')}
                         </p>
                         {viewMode === 'list' && item.mimeType !== 'application/vnd.google-apps.folder' && (
-                            <p className="text-xs text-gray-500">{item.size ? (parseInt(item.size)/1024/1024).toFixed(1) + ' MB' : 'Audio'}</p>
+                            <p className="text-xs text-[color:var(--text-muted)]/80">{item.size ? (parseInt(item.size)/1024/1024).toFixed(1) + ' MB' : 'Audio'}</p>
                         )}
                     </div>
 
                     {/* 리스트뷰 우측 아이콘 */}
                     {viewMode === 'list' && item.mimeType === 'application/vnd.google-apps.folder' && (
-                        <Icon.ChevronRight size={18} className="text-gray-600"/>
+                        <Icon.ChevronRight size={18} className="text-[color:var(--text-muted)]/60"/>
                     )}
 
                     {/* [NEW] 액션 버튼들 (오디오 파일인 경우) */}
                     {item.mimeType !== 'application/vnd.google-apps.folder' && (
                         <div className="flex items-center relative z-30">
                             {/* 재생 목록 추가 버튼 */}
-                            <button onClick={(e) => handleAddToQueue(e, item)} className="p-2 text-gray-400 hover:text-green-400 transition">
+                            <button onClick={(e) => handleAddToQueue(e, item)} className="p-2 text-[var(--text-muted)] hover:text-[var(--success)] transition">
                                 <Icon.ListPlus size={20}/>
                             </button>
 
                             {/* 다운로드 버튼 */}
-                            <button onClick={(e) => handleDownload(e, item)} className="p-2 text-gray-400 hover:text-blue-400 transition">
+                            <button onClick={(e) => handleDownload(e, item)} className="p-2 text-[var(--text-muted)] hover:text-[var(--tertiary)] transition">
                                 {downloadingId === item.id ? (
                                     // [NEW] 원형 프로그레스 바 (숫자 없이 차오르는 원)
                                     <div className="relative w-[18px] h-[18px]">
                                         <svg className="w-full h-full -rotate-90" viewBox="0 0 24 24">
                                             {/* 배경 원 */}
-                                            <circle cx="12" cy="12" r="10" fill="none" stroke="#374151" strokeWidth="4" />
+                                            <circle cx="12" cy="12" r="10" fill="none" stroke="var(--bg-container-highest)" strokeWidth="4" />
                                             {/* 진행 원 */}
-                                            <circle cx="12" cy="12" r="10" fill="none" stroke="#60A5FA" strokeWidth="4" 
+                                            <circle cx="12" cy="12" r="10" fill="none" stroke="var(--tertiary)" strokeWidth="4" 
                                                 strokeDasharray="62.83" // 2 * pi * r (approx)
                                                 strokeDashoffset={62.83 - (62.83 * downloadProgress) / 100}
                                                 className="transition-all duration-200 ease-linear"

@@ -14,11 +14,18 @@ import {
 } from 'lucide-react'
 
 /* ────── 유틸리티 ────── */
-function getFormatFromMime(mimeType?: string): string {
-  if (!mimeType) return 'AUDIO'
+function getFormatFromMime(mimeType?: string, fileName?: string): string {
+  if (fileName) {
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith('.m4a') || lower.endsWith('.mp4')) return 'M4A';
+    if (lower.endsWith('.flac')) return 'FLAC';
+    if (lower.endsWith('.mp3')) return 'MP3';
+    if (lower.endsWith('.wav')) return 'WAV';
+    if (lower.endsWith('.aac')) return 'AAC';
+  }
+  if (!mimeType) return ''
   const map: Record<string, string> = {
-    'audio/mpeg': 'MP3', 'audio/mp3': 'MP3',
-    'audio/flac': 'FLAC', 'audio/x-flac': 'FLAC',
+    'audio/mpeg': 'MP3', 'audio/mp3': 'MP3', 'audio/flac': 'FLAC', 'audio/x-flac': 'FLAC',
     'audio/wav': 'WAV', 'audio/x-wav': 'WAV',
     'audio/mp4': 'M4A', 'audio/x-m4a': 'M4A', 'audio/m4a': 'M4A',
     'audio/aac': 'AAC', 'audio/ogg': 'OGG', 'audio/opus': 'OPUS',
@@ -122,8 +129,8 @@ function LazyThumbnail({ fileId, mimeType, thumbnailLink }: { fileId: string, mi
   const displayUrl = getProxiedUrl(coverArt)
 
   return (
-    <div ref={ref} className="w-9 h-9 shrink-0 flex items-center justify-center overflow-hidden relative bg-[#0f141a] border border-[#99f7ff]/10">
-      <Music size={12} className="text-[#44484f] absolute" />
+    <div ref={ref} className="w-9 h-9 shrink-0 flex items-center justify-center overflow-hidden relative bg-[var(--bg-surface)] border border-[color:var(--tertiary)]/10">
+      <Music size={12} className="text-[var(--text-muted)] absolute" />
       {displayUrl && (
         <img src={displayUrl} referrerPolicy="no-referrer"
           className="w-full h-full object-cover relative z-10"
@@ -180,7 +187,7 @@ function LazyDuration({ fileId, durationMs }: { fileId: string, durationMs?: num
   }, [loaded, fileId, durationMs])
 
   return (
-    <div ref={ref} className="text-center text-[11px] text-[#72757d] font-['Inter'] tabular-nums">
+    <div ref={ref} className="text-center text-[11px] text-[var(--text-muted)] font-['Noto_Serif'] tabular-nums">
       {dur}
     </div>
   )
@@ -454,20 +461,20 @@ export default function DesktopConnect() {
   const hasMore = displayItems.length < sortedItems.length
 
   return (
-    <div className="h-full flex flex-col relative" style={{ background: '#0a0e14' }}>
+    <div className="h-full flex flex-col relative" style={{ background: 'var(--bg-surface)' }}>
        {/* 상단 그라디언트 */}
-       <div className="absolute top-0 left-0 right-0 h-72 pointer-events-none" style={{ background: 'linear-gradient(to bottom, rgba(153,247,255,0.04), rgba(10,14,20,0))' }}/>
-       <div className="absolute inset-0 pointer-events-none opacity-[0.02]" style={{ backgroundImage: 'radial-gradient(rgba(153,247,255,0.5) 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}/>
+       <div className="absolute top-0 left-0 right-0 h-72 pointer-events-none" style={{ background: 'linear-gradient(to bottom, var(--bg-container-high), transparent)' }}/>
+       <div className="absolute inset-0 pointer-events-none opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(var(--tertiary) 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}/>
        
        {/* 내비게이션 바 */}
-       <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-3 relative" style={{ background: 'rgba(10,14,20,0.85)', backdropFilter: 'blur(20px)' }}>
+       <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-3 relative border-b border-[var(--border-light)] analog-glass">
           <div className="flex items-center gap-1 text-sm min-w-0">
              {path.map((p, idx) => (
                 <div key={p.id} className="flex items-center shrink-0">
-                   {idx > 0 && <ChevronRight size={14} className="text-[#44484f] mx-1" />}
+                   {idx > 0 && <ChevronRight size={14} className="text-[var(--text-muted)] mx-1" />}
                    <button 
                       onClick={() => setPath(path.slice(0, idx + 1))}
-                      className={`font-['Space_Grotesk'] transition-colors truncate max-w-[200px] ${idx === path.length - 1 ? 'text-[#f1f3fc] font-bold text-base' : 'text-[#72757d] text-xs hover:text-[#99f7ff]'}`}
+                      className={`font-['Work_Sans'] transition-colors truncate max-w-[200px] ${idx === path.length - 1 ? 'text-[var(--text-main)] font-bold text-base' : 'text-[var(--text-muted)] text-xs hover:text-[var(--tertiary)]'}`}
                     >
                         {p.name}
                    </button>
@@ -479,48 +486,48 @@ export default function DesktopConnect() {
               {/* Type Filter */}
               <select 
                   value={filterBy} onChange={e => setFilterBy(e.target.value)}
-                  className="bg-transparent text-[#99f7ff] text-xs font-['Space_Grotesk'] outline-none border border-[#99f7ff]/20 px-2 py-1.5 focus:border-[#99f7ff]/50 cursor-pointer"
+                  className="bg-transparent text-[var(--tertiary)] text-xs font-['Work_Sans'] outline-none border border-[color:var(--tertiary)]/20 px-2 py-1.5 focus:border-[color:var(--tertiary)]/50 cursor-pointer"
               >
-                  <option value="all" className="bg-[#0a0e14] text-[#f1f3fc]">ALL_TYPES</option>
-                  <option value="folders" className="bg-[#0a0e14] text-[#f1f3fc]">FOLDERS_ONLY</option>
-                  <option value="files" className="bg-[#0a0e14] text-[#f1f3fc]">AUDIO_ONLY</option>
+                  <option value="all" className="bg-[var(--bg-surface)] text-[var(--text-main)]">ALL_TYPES</option>
+                  <option value="folders" className="bg-[var(--bg-surface)] text-[var(--text-main)]">FOLDERS_ONLY</option>
+                  <option value="files" className="bg-[var(--bg-surface)] text-[var(--text-main)]">AUDIO_ONLY</option>
               </select>
 
               {/* Sort Order */}
               <select 
                   value={serverSort} onChange={e => setServerSort(e.target.value)}
-                  className="bg-transparent text-[#99f7ff] text-xs font-['Space_Grotesk'] outline-none border border-[#99f7ff]/20 px-2 py-1.5 focus:border-[#99f7ff]/50 cursor-pointer"
+                  className="bg-transparent text-[var(--tertiary)] text-xs font-['Work_Sans'] outline-none border border-[color:var(--tertiary)]/20 px-2 py-1.5 focus:border-[color:var(--tertiary)]/50 cursor-pointer"
               >
-                  <option value="name" className="bg-[#0a0e14] text-[#f1f3fc]">SORT: NAME</option>
-                  <option value="modified" className="bg-[#0a0e14] text-[#f1f3fc]">SORT: NEWEST</option>
-                  <option value="size" className="bg-[#0a0e14] text-[#f1f3fc]">SORT: SIZE</option>
+                  <option value="name" className="bg-[var(--bg-surface)] text-[var(--text-main)]">SORT: NAME</option>
+                  <option value="modified" className="bg-[var(--bg-surface)] text-[var(--text-main)]">SORT: NEWEST</option>
+                  <option value="size" className="bg-[var(--bg-surface)] text-[var(--text-main)]">SORT: SIZE</option>
               </select>
 
               {/* AI Search Bar */}
-              <form onSubmit={handleAiSearch} className="relative group flex items-center ml-2 border border-[#ff59e3]/30 bg-[rgba(255,89,227,0.05)] focus-within:border-[#ff59e3] transition-colors">
-                  <Sparkles size={14} className={`absolute left-3 text-[#ff59e3] ${isAiSearching ? 'animate-spin' : ''}`} />
+              <form onSubmit={handleAiSearch} className="relative group flex items-center ml-2 border border-[color:var(--tertiary)]/30 bg-[color:var(--tertiary)]/5 focus-within:border-[color:var(--tertiary)] transition-colors">
+                  <Sparkles size={14} className={`absolute left-3 text-[var(--tertiary)] ${isAiSearching ? 'animate-spin' : ''}`} />
                   <input 
                      type="text" placeholder="AI Global Search (Current Folder)..." 
                      value={aiSearchQuery} 
                      onChange={e => setAiSearchQuery(e.target.value)}
                      disabled={isAiSearching}
-                     className="w-64 bg-transparent py-1.5 pl-9 pr-3 text-sm text-[#f1f3fc] outline-none font-['Space_Grotesk'] placeholder:text-[#ff59e3]/50 disabled:opacity-50"
+                     className="w-64 bg-transparent py-1.5 pl-9 pr-3 text-sm text-[var(--text-main)] outline-none font-['Work_Sans'] placeholder:text-[var(--tertiary)]/50 disabled:opacity-50"
                   />
-                  {isAiSearching && <span className="absolute right-2 text-[9px] text-[#ff59e3] animate-pulse">SEARCHING...</span>}
+                  {isAiSearching && <span className="absolute right-2 text-[9px] text-[var(--tertiary)] animate-pulse">SEARCHING...</span>}
               </form>
 
               {/* Local Search Bar */}
               <div className="relative group ml-2">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#44484f] group-focus-within:text-[#99f7ff] transition-colors" />
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--tertiary)] transition-colors" />
                   <input 
                      type="text" placeholder="Local Filter 🔎" 
                      value={localSearch} 
                      onChange={e => setLocalSearch(e.target.value)}
                      onKeyDown={e => { if (e.key === 'Enter') setServerSearch(localSearch) }}
-                     className="w-40 bg-white/5 border border-[#99f7ff]/20 py-1.5 pl-9 pr-8 text-sm text-[#f1f3fc] outline-none transition-all font-['Inter'] placeholder-[#44484f] focus:border-[#99f7ff]/60 focus:bg-white/10"
+                     className="w-40 bg-[var(--bg-container-highest)] border border-[color:var(--border-strong)]/30 py-1.5 pl-9 pr-8 text-sm text-[var(--text-main)] outline-none transition-all font-['Work_Sans'] placeholder-[var(--text-muted)] focus:border-[color:var(--tertiary)]/50 focus:bg-[var(--bg-container-high)]"
                   />
                   {serverSearch && (
-                      <button onClick={() => { setLocalSearch(''); setServerSearch('') }} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#72757d] hover:text-[#99f7ff]">
+                      <button onClick={() => { setLocalSearch(''); setServerSearch('') }} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--tertiary)]">
                           <XCircle size={14} />
                       </button>
                   )}
@@ -530,63 +537,63 @@ export default function DesktopConnect() {
 
        {/* 폴더 헤더 */}
        <div className="px-6 pb-3 pt-1 relative z-1">
-          <h1 className="font-['Space_Grotesk'] text-2xl font-bold text-[#f1f3fc] tracking-tight mb-3 truncate">
+          <h1 className="font-['Work_Sans'] text-2xl font-bold text-[var(--text-main)] tracking-tight mb-3 truncate">
             {currentFolder.name}
           </h1>
           <div className="flex items-center gap-3">
             <button onClick={handlePlayAll}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-['Space_Grotesk'] font-bold tracking-wide text-[#004145] transition-all hover:scale-105 active:scale-95"
-              style={{ background: 'linear-gradient(135deg, #99f7ff, #00f1fe)', boxShadow: '0 0 20px rgba(0,241,254,0.2)' }}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-['Work_Sans'] font-bold tracking-wide text-[var(--on-primary)] transition-all hover:scale-105 active:scale-95 shadow-[var(--shadow-ambient)]"
+              style={{ background: 'var(--primary)' }}
             >
               <PlayCircle size={16} /> PLAY_ALL
             </button>
             <button onClick={handleShuffleAll}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-['Space_Grotesk'] font-bold tracking-wide text-[#99f7ff] border border-[#99f7ff]/30 transition-all hover:bg-[#99f7ff]/5"
+              className="flex items-center gap-2 px-5 py-2 text-sm font-['Work_Sans'] font-bold tracking-wide text-[var(--tertiary)] border border-[color:var(--tertiary)]/30 transition-all hover:bg-[color:var(--tertiary)]/5"
             >
               <Shuffle size={16} /> SHUFFLE
             </button>
-            <span className="text-xs font-['Space_Grotesk'] text-[#72757d] tracking-widest uppercase ml-2">{musicCount} TRACKS</span>
+            <span className="text-xs font-['Work_Sans'] text-[var(--text-muted)] tracking-widest uppercase ml-2">{musicCount} TRACKS</span>
           </div>
        </div>
 
        {/* 테이블 헤더 */}
        <div className="px-6">
-          <div className="grid grid-cols-[32px_minmax(0,1fr)_100px_80px_60px_70px] gap-3 px-3 py-2 border-b border-[#99f7ff]/8 text-[9px] text-[#72757d] uppercase tracking-[0.2em] font-['Space_Grotesk'] font-bold select-none" style={{ background: 'rgba(10,14,20,0.9)' }}>
+          <div className="grid grid-cols-[32px_minmax(0,1fr)_100px_80px_60px_70px] gap-3 px-3 py-2 border-b border-[color:var(--tertiary)]/8 text-[9px] text-[var(--text-muted)] uppercase tracking-[0.2em] font-['Work_Sans'] font-bold select-none" style={{ background: 'var(--bg-surface)' }}>
               <div className="text-center">#</div>
-              <div className="flex items-center gap-1 cursor-pointer hover:text-[#99f7ff] transition" onClick={() => handleSortToggle('name')}>
+              <div className="flex items-center gap-1 cursor-pointer hover:text-[var(--tertiary)] transition" onClick={() => handleSortToggle('name')}>
                  TITLE {serverSort === 'name_asc' ? '↑' : serverSort === 'name_desc' ? '↓' : ''}
               </div>
               <div className="text-right">FORMAT</div>
-              <div className="text-right cursor-pointer hover:text-[#99f7ff] transition" onClick={() => handleSortToggle('size')}>
+              <div className="text-right cursor-pointer hover:text-[var(--tertiary)] transition" onClick={() => handleSortToggle('size')}>
                  SIZE {serverSort === 'size_asc' ? '↑' : serverSort === 'size_desc' ? '↓' : ''}
               </div>
-              <div className="text-right flex items-center justify-end gap-1 cursor-pointer hover:text-[#99f7ff] transition" onClick={() => handleSortToggle('modified')}>
+              <div className="text-right flex items-center justify-end gap-1 cursor-pointer hover:text-[var(--tertiary)] transition" onClick={() => handleSortToggle('modified')}>
                  DATE {serverSort === 'modified_asc' ? '↑' : serverSort === 'modified_desc' ? '↓' : ''}
               </div>
               <div className="text-center">TIME</div>
           </div>
        </div>
        {/* 트랙 리스트 */}
-       <div className="flex-1 overflow-y-auto px-6 pb-4" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(153,247,255,0.15) transparent' }}>
+       <div className="flex-1 overflow-y-auto px-6 pb-4" style={{ scrollbarWidth: 'thin', scrollbarColor: 'var(--bg-container-high) transparent' }}>
           {loading ? (
              <div className="flex flex-col items-center justify-center py-20 gap-3">
-               <Loader2 className="animate-spin text-[#99f7ff]" size={24}/>
-               <span className="text-[11px] font-['Space_Grotesk'] text-[#72757d] tracking-[0.3em] uppercase">SCANNING_DRIVE...</span>
+               <Loader2 className="animate-spin text-[var(--tertiary)]" size={24}/>
+               <span className="text-[11px] font-['Work_Sans'] text-[var(--text-muted)] tracking-[0.3em] uppercase">SCANNING_DRIVE...</span>
              </div>
           ) : error ? (
              <div className="flex flex-col items-center justify-center py-20 gap-4">
                <div className="w-16 h-16 flex items-center justify-center border border-red-500/20" style={{ background: 'rgba(255,89,89,0.05)' }}>
                  <span className="text-2xl">⚠️</span>
                </div>
-               <span className="text-sm font-['Space_Grotesk'] text-red-400 tracking-wide uppercase">CONNECTION_ERROR</span>
-               <p className="text-xs font-['Inter'] text-[#72757d] max-w-sm text-center leading-relaxed">{error}</p>
+               <span className="text-sm font-['Work_Sans'] text-red-500 tracking-wide uppercase">CONNECTION_ERROR</span>
+               <p className="text-xs font-['Noto_Serif'] text-[var(--text-muted)] max-w-sm text-center leading-relaxed">{error}</p>
                <div className="flex gap-3 mt-2">
                  <button onClick={() => loadFolder(currentFolder.id)}
-                   className="flex items-center gap-2 px-5 py-2 text-xs font-['Space_Grotesk'] tracking-wider text-[#99f7ff] border border-[#99f7ff]/30 hover:bg-[#99f7ff]/5 transition font-bold">
+                   className="flex items-center gap-2 px-5 py-2 text-xs font-['Work_Sans'] tracking-wider text-[var(--tertiary)] border border-[color:var(--tertiary)]/30 hover:bg-[color:var(--tertiary)]/5 transition font-bold">
                    RETRY
                  </button>
                  <button onClick={() => window.location.href = '/'}
-                   className="flex items-center gap-2 px-5 py-2 text-xs font-['Space_Grotesk'] tracking-wider text-[#72757d] border border-[#44484f]/50 hover:border-[#99f7ff]/30 hover:text-[#99f7ff] transition font-bold">
+                   className="flex items-center gap-2 px-5 py-2 text-xs font-['Work_Sans'] tracking-wider text-[var(--text-muted)] border border-[color:var(--border-strong)]/50 hover:border-[color:var(--tertiary)]/30 hover:text-[var(--tertiary)] transition font-bold">
                    RE_LOGIN
                  </button>
                </div>
@@ -597,7 +604,7 @@ export default function DesktopConnect() {
                      const isFolder = item.mimeType === 'application/vnd.google-apps.folder'
                      const isActive = currentTrack?.id === item.id
                      const isCurrentlyPlaying = isActive && isPlaying
-                     const fmt = isFolder ? '' : (getFormatFromMime(item.mimeType) || getExtFromName(item.name))
+                     const fmt = isFolder ? '' : (getFormatFromMime(item.mimeType, item.name) || getExtFromName(item.name))
                      const size = isFolder ? '' : formatFileSize(item.size)
                      const isFav = favorites.some((f: any) => f.id === item.id)
                      
@@ -607,38 +614,38 @@ export default function DesktopConnect() {
                             onClick={() => isFolder ? handleNavigate({id: item.id, name: item.name}) : handlePlayFile(item)}
                             className={`group grid grid-cols-[32px_minmax(0,1fr)_100px_80px_60px_70px] gap-3 items-center px-3 py-2 transition-all cursor-pointer select-none border-l-2 ${
                               isActive 
-                                ? 'bg-[#99f7ff]/5 border-[#99f7ff]' 
-                                : 'border-transparent hover:bg-white/[0.03] hover:border-[#99f7ff]/20'
+                                ? 'bg-[color:var(--tertiary)]/5 border-[var(--tertiary)]' 
+                                : 'border-transparent hover:bg-white/[0.03] hover:border-[color:var(--tertiary)]/20'
                             }`}
                          >
                             {/* # */}
                             <div className="text-center relative">
-                              <span className={`text-[13px] font-['Space_Grotesk'] group-hover:hidden ${isActive ? 'text-[#99f7ff]' : 'text-[#72757d]'}`}>
-                                {isCurrentlyPlaying ? <Disc3 size={14} className="animate-spin text-[#99f7ff] mx-auto" /> : index + 1}
+                              <span className={`text-[13px] font-['Work_Sans'] group-hover:hidden ${isActive ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)]'}`}>
+                                {isCurrentlyPlaying ? <Disc3 size={14} className="animate-spin text-[var(--tertiary)] mx-auto" /> : index + 1}
                               </span>
                               <button onClick={(e) => { e.stopPropagation(); isFolder ? handleNavigate({id: item.id, name: item.name}) : handlePlayFile(item) }}
                                 className="hidden group-hover:flex items-center justify-center w-full">
                                 {isCurrentlyPlaying 
-                                  ? <Pause size={14} fill="currentColor" className="text-[#99f7ff]" /> 
-                                  : <Play size={14} fill="currentColor" className={isActive ? 'text-[#99f7ff]' : 'text-[#f1f3fc]'} />}
+                                  ? <Pause size={14} fill="currentColor" className="text-[var(--tertiary)]" /> 
+                                  : <Play size={14} fill="currentColor" className={isActive ? 'text-[var(--tertiary)]' : 'text-[var(--text-main)]'} />}
                               </button>
                             </div>
                             
                             {/* 제목 + 썸네일 */}
                             <div className="flex items-center gap-3 overflow-hidden min-w-0">
                                 {isFolder ? (
-                                  <div className="w-9 h-9 shrink-0 flex items-center justify-center overflow-hidden bg-[#99f7ff]/5 border border-[#99f7ff]/10">
-                                    <Folder size={16} className="text-[#99f7ff]/60"/>
+                                  <div className="w-9 h-9 shrink-0 flex items-center justify-center overflow-hidden bg-[color:var(--tertiary)]/5 border border-[color:var(--tertiary)]/10">
+                                    <Folder size={16} className="text-[color:var(--tertiary)]/60"/>
                                   </div>
                                 ) : (
                                   <LazyThumbnail fileId={item.id} mimeType={item.mimeType} thumbnailLink={item.thumbnailLink} />
                                 )}
                                 <div className="flex flex-col truncate min-w-0">
-                                   <span className={`font-['Space_Grotesk'] font-semibold truncate text-[13px] tracking-tight ${isActive ? 'text-[#99f7ff]' : 'text-[#f1f3fc]'}`}>
+                                   <span className={`font-['Work_Sans'] font-semibold truncate text-[13px] tracking-tight ${isActive ? 'text-[var(--tertiary)]' : 'text-[var(--text-main)]'}`}>
                                      {item.name.replace(/\.[^.]+$/, '')}
                                    </span>
                                    {!isFolder && (
-                                     <span className="text-[10px] text-[#72757d] font-['Inter'] truncate">
+                                     <span className="text-[10px] text-[var(--text-muted)] font-['Noto_Serif'] truncate">
                                        Google Drive
                                      </span>
                                    )}
@@ -648,20 +655,20 @@ export default function DesktopConnect() {
                             {/* 포맷 */}
                             <div className="text-center">
                                 {isFolder ? (
-                                  <span className="text-[10px] text-[#72757d] font-['Inter']">폴더</span>
+                                  <span className="text-[10px] text-[var(--text-muted)] font-['Noto_Serif']">폴더</span>
                                 ) : fmt ? (
-                                  <span className="text-[9px] font-['Space_Grotesk'] text-[#99f7ff]/70 bg-[#99f7ff]/5 px-2 py-0.5 border border-[#99f7ff]/15 tracking-widest font-bold">{fmt}</span>
+                                  <span className="text-[9px] font-['Work_Sans'] text-[color:var(--tertiary)]/70 bg-[color:var(--tertiary)]/5 px-2 py-0.5 border border-[color:var(--tertiary)]/15 tracking-widest font-bold">{fmt}</span>
                                 ) : null}
                             </div>
 
                             {/* 크기 */}
-                            <div className="text-right text-[11px] text-[#72757d] font-['Inter'] tabular-nums">
+                            <div className="text-right text-[11px] text-[var(--text-muted)] font-['Noto_Serif'] tabular-nums">
                                 {size}
                             </div>
 
                             {/* 시간 — DB에서 lazy load */}
                             {isFolder ? (
-                              <div className="text-center text-[11px] text-[#72757d]"></div>
+                              <div className="text-center text-[11px] text-[var(--text-muted)]"></div>
                             ) : (
                               <LazyDuration fileId={item.id} durationMs={item.videoMediaMetadata?.durationMillis ? Number(item.videoMediaMetadata.durationMillis) : null} />
                             )}
@@ -671,20 +678,20 @@ export default function DesktopConnect() {
                                {!isFolder && (
                                  <>
                                    <button onClick={(e) => { e.stopPropagation(); toggleFavorite({ id: item.id, name: item.name, mimeType: item.mimeType, artist: 'Google Drive', src: item.id, thumbnailLink: item.thumbnailLink, cover_art: item.thumbnailLink }) }} 
-                                     className={`p-1 transition-colors ${isFav ? 'text-[#ff59e3]' : 'text-[#72757d] hover:text-[#ff59e3]'}`}
+                                     className={`p-1 transition-colors ${isFav ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--tertiary)]'}`}
                                      title="즐겨찾기">
                                      <Heart size={13} fill={isFav ? 'currentColor' : 'none'} />
                                    </button>
                                    <button onClick={(e) => { e.stopPropagation(); handleAddToQueue(item) }}
-                                     className="p-1 text-[#72757d] hover:text-[#99f7ff] transition-colors" title="대기열에 추가">
+                                     className="p-1 text-[var(--text-muted)] hover:text-[var(--tertiary)] transition-colors" title="대기열에 추가">
                                      <ListPlus size={13} />
                                    </button>
                                    <button onClick={(e) => { e.stopPropagation(); handleOpenPlaylistModal(item) }}
-                                     className="p-1 text-[#72757d] hover:text-[#ff59e3] transition-colors" title="플레이리스트에 저장">
+                                     className="p-1 text-[var(--text-muted)] hover:text-[var(--tertiary)] transition-colors" title="플레이리스트에 저장">
                                      <ListMusic size={13} />
                                    </button>
                                    <button onClick={(e) => { e.stopPropagation(); handleDownload(item) }}
-                                     className={`p-1 transition-colors ${downloadingId === item.id ? 'text-[#00ff88] animate-pulse' : 'text-[#72757d] hover:text-[#99f7ff]'}`} title={downloadingId === item.id ? "다운로드 중..." : "다운로드"}>
+                                     className={`p-1 transition-colors ${downloadingId === item.id ? 'text-[#00ff88] animate-pulse' : 'text-[var(--text-muted)] hover:text-[var(--tertiary)]'}`} title={downloadingId === item.id ? "다운로드 중..." : "다운로드"}>
                                      {downloadingId === item.id ? <Disc3 size={13} className="animate-spin" /> : <Download size={13} />}
                                    </button>
                                  </>
@@ -697,15 +704,15 @@ export default function DesktopConnect() {
                  {/* Infinite scroll sentinel */}
                  {hasMore && (
                    <div ref={sentinelRef} className="flex items-center justify-center py-4">
-                     <span className="text-[10px] font-['Space_Grotesk'] text-[#44484f] tracking-widest">LOADING_MORE...</span>
+                     <span className="text-[10px] font-['Work_Sans'] text-[var(--text-muted)] tracking-widest">LOADING_MORE...</span>
                    </div>
                  )}
 
                  {filteredItems.length === 0 && !loading && (
-                   <div className="flex flex-col items-center justify-center py-20 text-[#44484f]">
+                   <div className="flex flex-col items-center justify-center py-20 text-[var(--text-muted)]">
                      <Music size={40} className="opacity-30 mb-3" />
-                     <span className="text-xs font-['Space_Grotesk'] tracking-[0.2em] uppercase">
-                       {localSearch || serverSearch ? 'NO_RESULTS' : 'EMPTY_FOLDER'}
+                     <span className="text-xs font-['Work_Sans'] tracking-[0.2em] uppercase">
+                       {localSearch || serverSearch || aiSearchQuery ? 'NO_RESULTS' : 'EMPTY_FOLDER'}
                      </span>
                    </div>
                  )}
@@ -713,29 +720,28 @@ export default function DesktopConnect() {
           )}
        </div>
 
-      {/* Playlist Selector Modal */}
       {showPlaylistModal && trackToAdd && (
-        <div className="fixed inset-0 z-50 bg-[#0a0e14]/80 backdrop-blur-sm flex items-center justify-center" onClick={() => setShowPlaylistModal(false)}>
-          <div className="bg-[#1b2028] border border-[#ff59e3]/30 p-6 w-96 shadow-[0_0_30px_rgba(255,89,227,0.1)]" onClick={e => e.stopPropagation()}>
-            <h2 className="font-['Space_Grotesk'] text-lg text-[#f1f3fc] font-bold mb-2">ADD TO PLAYLIST</h2>
-            <p className="font-['Space_Grotesk'] text-xs text-[#99f7ff] truncate mb-4 border-b border-[#44484f]/30 pb-2">{trackToAdd.name}</p>
+        <div className="fixed inset-0 z-50 bg-[var(--bg-main)]/60 backdrop-blur-sm flex items-center justify-center" onClick={() => setShowPlaylistModal(false)}>
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] p-6 w-96 shadow-[var(--shadow-ambient)] rounded-md" onClick={e => e.stopPropagation()}>
+            <h2 className="font-['Work_Sans'] text-lg text-[var(--text-main)] font-bold mb-2">ADD TO PLAYLIST</h2>
+            <p className="font-['Work_Sans'] text-xs text-[var(--tertiary)] truncate mb-4 border-b border-[var(--border-light)] pb-2">{trackToAdd.name}</p>
             
             <div className="max-h-60 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,89,227,0.15) transparent' }}>
               {playlists.length === 0 ? (
-                 <p className="text-[#72757d] text-xs font-['Space_Grotesk'] py-4 text-center">플레이리스트가 없습니다.<br/>LISTS 메뉴에서 생성해주세요.</p>
+                 <p className="text-[var(--text-muted)] text-xs font-['Work_Sans'] py-4 text-center">플레이리스트가 없습니다.<br/>LISTS 메뉴에서 생성해주세요.</p>
               ) : (
                 playlists.map(pl => (
                   <button key={pl.id} onClick={() => handleAddToPlaylist(pl.id)}
-                    className="w-full text-left px-3 py-2.5 flex items-center gap-3 group hover:bg-[#ff59e3]/10 transition border-l-2 border-transparent hover:border-[#ff59e3]">
-                    <ListMusic size={14} className="text-[#72757d] group-hover:text-[#ff59e3]" />
-                    <span className="font-['Space_Grotesk'] text-sm text-[#f1f3fc]">{pl.name}</span>
+                    className="w-full text-left px-3 py-2.5 flex items-center gap-3 group hover:bg-[color:var(--tertiary)]/5 transition border-l-2 border-transparent hover:border-[var(--tertiary)]">
+                    <ListMusic size={14} className="text-[var(--text-muted)] group-hover:text-[var(--tertiary)]" />
+                    <span className="font-['Work_Sans'] text-sm text-[var(--text-main)]">{pl.name}</span>
                   </button>
                 ))
               )}
             </div>
             
-            <div className="flex justify-end mt-4 pt-3 border-t border-[#44484f]/30">
-              <button onClick={() => setShowPlaylistModal(false)} className="px-4 py-1.5 font-['Space_Grotesk'] text-xs text-[#72757d] hover:text-[#f1f3fc] transition">CLOSE</button>
+            <div className="flex justify-end mt-4 pt-3 border-t border-[color:var(--border-strong)]/30">
+              <button onClick={() => setShowPlaylistModal(false)} className="px-4 py-1.5 font-['Work_Sans'] text-xs text-[var(--text-muted)] hover:text-[var(--text-main)] transition">CLOSE</button>
             </div>
           </div>
         </div>

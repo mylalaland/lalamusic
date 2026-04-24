@@ -58,7 +58,7 @@ export async function searchLibraryWithAI(userQuery: string, apiKey?: string, pr
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  if (!apiKey) return []
+  if (!apiKey) throw new Error('API Key가 없습니다. 설정에서 API Key를 등록해주세요.')
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey)
@@ -119,9 +119,9 @@ export async function searchLibraryWithAI(userQuery: string, apiKey?: string, pr
       .in('id', selectedIds)
 
     return fullTracks || []
-  } catch (e) {
+  } catch (e: any) {
     console.error("AI Optimize Error:", e)
-    return []
+    throw new Error(e.message || 'AI 처리 중 오류가 발생했습니다.')
   }
 }
 
@@ -156,8 +156,8 @@ export async function searchDriveWithAI(folderId: string, userQuery: string, api
       thumbnail_link: f.thumbnailLink, drive_file_id: f.id, mime_type: f.mimeType,
       duration: f.videoMediaMetadata?.durationMillis ? f.videoMediaMetadata.durationMillis / 1000 : undefined
     }))
-  } catch (e) {
+  } catch (e: any) {
     console.error("❌ searchDriveWithAI Error:", e)
-    return []
+    throw new Error(e.message || 'AI 검색 중 오류가 발생했습니다.')
   }
 }

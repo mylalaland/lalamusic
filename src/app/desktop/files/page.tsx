@@ -52,39 +52,39 @@ export default function DesktopFiles() {
   // --- MENU VIEW ---
   if (view === 'menu') {
     return (
-      <div className="h-full flex flex-col relative" style={{ background: '#0a0e14' }}>
+      <div className="h-full flex flex-col relative" style={{ background: 'var(--bg-surface)' }}>
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-0 right-0 h-64 opacity-10" style={{ background: 'linear-gradient(180deg, rgba(0,255,136,0.15) 0%, transparent 100%)' }} />
-          <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: 'radial-gradient(#00ff88 0.4px, transparent 0.4px)', backgroundSize: '24px 24px' }} />
+          <div className="absolute top-0 left-0 right-0 h-64 opacity-10" style={{ background: 'linear-gradient(180deg, var(--bg-container-high) 0%, transparent 100%)' }} />
+          <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: 'radial-gradient(var(--tertiary) 0.4px, transparent 0.4px)', backgroundSize: '24px 24px' }} />
         </div>
 
         <div className="px-8 pt-8 pb-4 relative z-10">
-          <h1 className="font-['Space_Grotesk'] text-2xl font-bold text-[#f1f3fc] tracking-tight">LOCAL_FILES</h1>
-          <p className="font-['Space_Grotesk'] text-[10px] text-[#44484f] tracking-[0.3em] mt-1">OFFLINE_STORAGE</p>
+          <h1 className="font-['Work_Sans'] text-2xl font-bold text-[var(--text-main)] tracking-tight">LOCAL_FILES</h1>
+          <p className="font-['Work_Sans'] text-[10px] text-[var(--text-muted)] tracking-[0.3em] mt-1">OFFLINE_STORAGE</p>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-8 pb-8 relative z-10" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(153,247,255,0.15) transparent' }}>
-          <h2 className="font-['Space_Grotesk'] text-[9px] tracking-[0.3em] text-[#99f7ff] uppercase mb-3">OFFLINE_FILES</h2>
+        <div className="flex-1 overflow-y-auto px-8 pb-8 relative z-10" style={{ scrollbarWidth: 'thin', scrollbarColor: 'var(--bg-container-high) transparent' }}>
+          <h2 className="font-['Work_Sans'] text-[9px] tracking-[0.3em] text-[var(--tertiary)] uppercase mb-3">OFFLINE_FILES</h2>
           <div className="space-y-1">
             {offlineSections.map(item => {
               const Icon = item.icon
               return (
                 <button key={item.key} onClick={() => { setView(item.key as any); loadFiles() }}
-                  className="w-full flex items-center gap-4 px-4 py-3 transition-all group hover:bg-[#99f7ff]/5 border border-transparent hover:border-[#99f7ff]/10">
-                  <div className="w-9 h-9 flex items-center justify-center" style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.1)' }}>
-                    <Icon size={16} className="text-[#00ff88]" />
+                  className="w-full flex items-center gap-4 px-4 py-3 transition-all group hover:bg-[color:var(--tertiary)]/5 border border-transparent hover:border-[color:var(--tertiary)]/10">
+                  <div className="w-9 h-9 flex items-center justify-center" style={{ background: 'var(--bg-container-high)', border: '1px solid var(--bg-container-high)' }}>
+                    <Icon size={16} className="text-[var(--tertiary)]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <span className="font-['Space_Grotesk'] text-sm text-[#f1f3fc] tracking-tight font-medium">{item.label}</span>
-                    <p className="font-['Inter'] text-[10px] text-[#44484f]">{item.desc}</p>
+                    <span className="font-['Work_Sans'] text-sm text-[var(--text-main)] tracking-tight font-medium">{item.label}</span>
+                    <p className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)]">{item.desc}</p>
                   </div>
-                  <ChevronRight size={14} className="text-[#44484f] group-hover:text-[#99f7ff] transition-colors" />
+                  <ChevronRight size={14} className="text-[var(--text-muted)] group-hover:text-[var(--tertiary)] transition-colors" />
                 </button>
               )
             })}
           </div>
 
-          <p className="font-['Inter'] text-xs text-[#44484f] mt-6 px-4 leading-relaxed">
+          <p className="font-['Noto_Serif'] text-xs text-[var(--text-muted)] mt-6 px-4 leading-relaxed">
             Connect 메뉴에서 다운로드한 곡과 오프라인 저장된 폴더를 관리합니다.
           </p>
         </div>
@@ -101,35 +101,35 @@ export default function DesktopFiles() {
   const viewTitleMap: Record<string, string> = { downloads: 'DOWNLOADS', offlineFolders: 'OFFLINE_FOLDERS' }
 
   return (
-    <div className="h-full flex flex-col relative" style={{ background: '#0a0e14' }}>
+    <div className="h-full flex flex-col relative" style={{ background: 'var(--bg-surface)' }}>
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-0 right-0 h-64 opacity-10" style={{ background: 'linear-gradient(180deg, rgba(0,255,136,0.15) 0%, transparent 100%)' }} />
+        <div className="absolute top-0 left-0 right-0 h-64 opacity-10" style={{ background: 'linear-gradient(180deg, var(--bg-container-high) 0%, transparent 100%)' }} />
       </div>
 
       <div className="flex items-center gap-4 px-8 pt-6 pb-4 relative z-10">
         <button onClick={() => setView('menu')}
-          className="w-8 h-8 flex items-center justify-center text-[#72757d] hover:text-[#99f7ff] transition border border-[#44484f]/50 hover:border-[#99f7ff]/30">
+          className="w-8 h-8 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--tertiary)] transition border border-[color:var(--border-strong)]/50 hover:border-[color:var(--tertiary)]/30">
           <ArrowLeft size={16} />
         </button>
-        <h1 className="font-['Space_Grotesk'] text-xl font-bold text-[#f1f3fc] tracking-tight">{viewTitleMap[view]}</h1>
+        <h1 className="font-['Work_Sans'] text-xl font-bold text-[var(--text-main)] tracking-tight">{viewTitleMap[view]}</h1>
         <div className="flex-1" />
         <button onClick={loadFiles}
-          className="w-8 h-8 flex items-center justify-center text-[#72757d] hover:text-[#99f7ff] transition border border-[#44484f]/50 hover:border-[#99f7ff]/30">
+          className="w-8 h-8 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--tertiary)] transition border border-[color:var(--border-strong)]/50 hover:border-[color:var(--tertiary)]/30">
           <RefreshCw size={14} />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-8 pb-8 relative z-10" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(153,247,255,0.15) transparent' }}>
+      <div className="flex-1 overflow-y-auto px-8 pb-8 relative z-10" style={{ scrollbarWidth: 'thin', scrollbarColor: 'var(--bg-container-high) transparent' }}>
         {loading ? (
-          <div className="flex items-center justify-center py-20 text-[#72757d]">
-            <div className="w-4 h-4 border-2 border-[#99f7ff] border-t-transparent animate-spin mr-2" />
-            <span className="font-['Space_Grotesk'] text-xs tracking-widest">SCANNING...</span>
+          <div className="flex items-center justify-center py-20 text-[var(--text-muted)]">
+            <div className="w-4 h-4 border-2 border-[var(--tertiary)] border-t-transparent animate-spin mr-2" />
+            <span className="font-['Work_Sans'] text-xs tracking-widest">SCANNING...</span>
           </div>
         ) : displayFiles.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <Download size={48} className="text-[#44484f] mb-4" />
-            <p className="font-['Space_Grotesk'] text-xs text-[#44484f] tracking-widest uppercase">EMPTY_LIST</p>
-            <p className="font-['Inter'] text-[10px] text-[#44484f]/60 mt-1">이 항목에 표시할 오프라인 파일이 없습니다.</p>
+            <Download size={48} className="text-[var(--text-muted)] mb-4" />
+            <p className="font-['Work_Sans'] text-xs text-[var(--text-muted)] tracking-widest uppercase">EMPTY_LIST</p>
+            <p className="font-['Noto_Serif'] text-[10px] text-[color:var(--text-muted)]/60 mt-1">이 항목에 표시할 오프라인 파일이 없습니다.</p>
           </div>
         ) : view === 'offlineFolders' ? (
           <div className="flex flex-col mt-1">
@@ -140,31 +140,31 @@ export default function DesktopFiles() {
                 return acc
              }, {} as Record<string, any[]>)) as [string, any[]][]).map(([artist, artistFiles], idx) => (
                 <div key={idx} className="mb-4">
-                  <h3 className="font-['Space_Grotesk'] text-xs font-bold text-[#f1f3fc] tracking-tight mb-2 border-b border-[#44484f]/30 pb-1">{artist}</h3>
+                  <h3 className="font-['Work_Sans'] text-xs font-bold text-[var(--text-main)] tracking-tight mb-2 border-b border-[color:var(--border-strong)]/30 pb-1">{artist}</h3>
                   {artistFiles.map((file, i) => {
                     const isActive = currentTrack?.id === file.id
                     return (
                         <div key={file.id} onClick={() => handlePlay(file)}
                           className={`group flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-all border-l-2 ${
-                            isActive ? 'bg-[#99f7ff]/5 border-[#99f7ff]' : 'border-transparent hover:bg-white/3 hover:border-[#99f7ff]/20'
+                            isActive ? 'bg-[color:var(--tertiary)]/5 border-[var(--tertiary)]' : 'border-transparent hover:bg-[var(--bg-container-high)] hover:border-[color:var(--tertiary)]/20'
                           }`}>
-                          <div className="w-9 h-9 bg-[#1b2028] border border-white/5 flex items-center justify-center shrink-0 overflow-hidden">
+                          <div className="w-9 h-9 bg-[var(--bg-container)] border border-white/5 flex items-center justify-center shrink-0 overflow-hidden">
                             {isActive && isPlaying
-                              ? <Disc3 size={14} className="animate-spin text-[#99f7ff]" />
+                              ? <Disc3 size={14} className="animate-spin text-[var(--tertiary)]" />
                               : file.cover_art
                                 ? <img src={file.cover_art} className="w-full h-full object-cover" alt="" />
-                                : <Music size={14} className="text-[#44484f]" />}
+                                : <Music size={14} className="text-[var(--text-muted)]" />}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <span className={`font-['Space_Grotesk'] text-sm truncate block tracking-tight ${isActive ? 'text-[#99f7ff] font-bold' : 'text-[#f1f3fc]'}`}>
+                            <span className={`font-['Work_Sans'] text-sm truncate block tracking-tight ${isActive ? 'text-[var(--tertiary)] font-bold' : 'text-[var(--text-main)]'}`}>
                               {file.name}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">
-                            <button onClick={(e) => { e.stopPropagation(); handlePlay(file) }} className="text-[#72757d] hover:text-[#99f7ff]">
+                            <button onClick={(e) => { e.stopPropagation(); handlePlay(file) }} className="text-[var(--text-muted)] hover:text-[var(--tertiary)]">
                               <Play size={14} />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(file.id) }} className="text-[#72757d] hover:text-red-400">
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(file.id) }} className="text-[var(--text-muted)] hover:text-red-500">
                               <Trash2 size={14} />
                             </button>
                           </div>
@@ -181,26 +181,26 @@ export default function DesktopFiles() {
               return (
                 <div key={file.id} onClick={() => handlePlay(file)}
                   className={`group flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-all border-l-2 ${
-                    isActive ? 'bg-[#99f7ff]/5 border-[#99f7ff]' : 'border-transparent hover:bg-white/3 hover:border-[#99f7ff]/20'
+                    isActive ? 'bg-[color:var(--tertiary)]/5 border-[var(--tertiary)]' : 'border-transparent hover:bg-[var(--bg-container-high)] hover:border-[color:var(--tertiary)]/20'
                   }`}>
-                  <div className="w-9 h-9 bg-[#1b2028] border border-white/5 flex items-center justify-center shrink-0 overflow-hidden">
+                  <div className="w-9 h-9 bg-[var(--bg-container)] border border-white/5 flex items-center justify-center shrink-0 overflow-hidden">
                     {isActive && isPlaying
-                      ? <Disc3 size={14} className="animate-spin text-[#99f7ff]" />
+                      ? <Disc3 size={14} className="animate-spin text-[var(--tertiary)]" />
                       : file.cover_art
                         ? <img src={file.cover_art} className="w-full h-full object-cover" alt="" />
-                        : <Music size={14} className="text-[#44484f]" />}
+                        : <Music size={14} className="text-[var(--text-muted)]" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <span className={`font-['Space_Grotesk'] text-sm truncate block tracking-tight ${isActive ? 'text-[#99f7ff] font-bold' : 'text-[#f1f3fc]'}`}>
+                    <span className={`font-['Work_Sans'] text-sm truncate block tracking-tight ${isActive ? 'text-[var(--tertiary)] font-bold' : 'text-[var(--text-main)]'}`}>
                       {file.name}
                     </span>
-                    <span className="font-['Inter'] text-[10px] text-[#72757d] truncate block">{file.artist || 'Unknown'}</span>
+                    <span className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)] truncate block">{file.artist || 'Unknown'}</span>
                   </div>
                   <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">
-                    <button onClick={(e) => { e.stopPropagation(); handlePlay(file) }} className="text-[#72757d] hover:text-[#99f7ff]">
+                    <button onClick={(e) => { e.stopPropagation(); handlePlay(file) }} className="text-[var(--text-muted)] hover:text-[var(--tertiary)]">
                       <Play size={14} />
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(file.id) }} className="text-[#72757d] hover:text-red-400">
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(file.id) }} className="text-[var(--text-muted)] hover:text-red-500">
                       <Trash2 size={14} />
                     </button>
                   </div>

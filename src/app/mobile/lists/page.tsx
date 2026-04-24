@@ -95,15 +95,15 @@ export default function ListsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col p-4 pb-32">
+    <div className="min-h-screen analog-surface text-[var(--text-main)] flex flex-col p-4 pb-32">
       <div className="flex items-center justify-between mb-6 pt-4">
         <h1 className="text-3xl font-bold flex items-center gap-2">
           {selectedPlaylist ? (
-              <button onClick={handleBack} className="mr-2 hover:bg-gray-800 rounded-full p-1 transition">
+              <button onClick={handleBack} className="mr-2 hover:bg-[var(--bg-container-high)] rounded-full p-1 transition">
                   <ArrowLeft />
               </button>
           ) : (
-              <ListMusic size={32} className="text-purple-500" />
+              <ListMusic size={32} className="text-[var(--tertiary)]" />
           )}
           <span className="truncate max-w-[200px]">
             {selectedPlaylist ? selectedPlaylist.name : 'Playlists'}
@@ -113,7 +113,7 @@ export default function ListsPage() {
         {!selectedPlaylist && (
             <button 
                 onClick={handleCreate} 
-                className="p-3 bg-purple-600 rounded-full hover:bg-purple-500 shadow-lg shadow-purple-900/50 transition active:scale-95"
+                className="p-3 bg-[var(--tertiary)] rounded-full hover:bg-[var(--tertiary)]/80 shadow-lg transition active:scale-95"
             >
                 <Plus size={24} />
             </button>
@@ -124,25 +124,25 @@ export default function ListsPage() {
         {!selectedPlaylist && (
             <div className="space-y-3">
                 {playlists.length === 0 && (
-                    <div className="text-center py-20 text-gray-500 flex flex-col items-center">
+                    <div className="text-center py-20 text-[color:var(--text-muted)]/80 flex flex-col items-center">
                         <ListMusic size={48} className="mb-4 opacity-20"/>
                         <p>플레이리스트가 없습니다.</p>
-                        <p className="text-sm mt-2 text-gray-600">우측 상단 + 버튼을 눌러 만들어보세요.</p>
+                        <p className="text-sm mt-2 text-[color:var(--text-muted)]/60">우측 상단 + 버튼을 눌러 만들어보세요.</p>
                     </div>
                 )}
                 {playlists.map(pl => (
                     <div key={pl.id} onClick={() => handleSelect(pl)} 
-                         className="bg-gray-900/60 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:bg-gray-800 transition border border-gray-800 group">
+                         className="bg-[color:var(--bg-container)]/60 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:bg-[var(--bg-container-high)] transition border border-[var(--border-strong)] group">
                         <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center text-gray-500 group-hover:text-purple-400 transition">
+                            <div className="w-12 h-12 bg-[var(--bg-container-high)] rounded-lg flex items-center justify-center text-[color:var(--text-muted)]/80 group-hover:text-[var(--tertiary)] transition">
                                 <ListMusic size={24} />
                             </div>
                             <div>
-                                <p className="font-bold text-lg text-gray-200 group-hover:text-white">{pl.name}</p>
-                                <p className="text-xs text-gray-500">{new Date(pl.created_at).toLocaleDateString()}</p>
+                                <p className="font-bold text-lg text-[var(--text-main)] group-hover:text-[var(--text-main)]">{pl.name}</p>
+                                <p className="text-xs text-[color:var(--text-muted)]/80">{new Date(pl.created_at).toLocaleDateString()}</p>
                             </div>
                         </div>
-                        <button onClick={(e) => handleDeletePlaylist(e, pl.id)} className="p-3 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-full transition">
+                        <button onClick={(e) => handleDeletePlaylist(e, pl.id)} className="p-3 text-[color:var(--text-muted)]/60 hover:text-red-500 hover:bg-red-500/10 rounded-full transition">
                             <Trash2 size={20} />
                         </button>
                     </div>
@@ -157,28 +157,28 @@ export default function ListsPage() {
                     <div className="flex gap-2 mb-6">
                         {/* Play All 버튼 */}
                         <button onClick={() => { setPlaylist(tracks); setTrack(tracks[0]); }} 
-                                className="flex-1 py-4 bg-purple-900/30 text-purple-400 rounded-xl font-bold hover:bg-purple-900/50 flex items-center justify-center gap-2 transition border border-purple-500/20">
+                                className="flex-1 py-4 bg-[var(--tertiary)]/10 text-[var(--tertiary)] rounded-xl font-bold hover:bg-[var(--tertiary)]/20 flex items-center justify-center gap-2 transition border border-[var(--tertiary)]/20">
                             <Play size={20} fill="currentColor"/> Play All ({tracks.length})
                         </button>
                         
                         {/* [NEW] 셔플 버튼 */}
                         <button onClick={handleShuffle} 
-                                className="w-16 bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 transition border border-gray-700">
+                                className="w-16 bg-[var(--bg-container-high)] rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-container-highest)] transition border border-[var(--border-strong)]">
                             <Shuffle size={24} />
                         </button>
                     </div>
                 ) : (
-                    <div className="text-center py-20 text-gray-500 flex flex-col items-center">
+                    <div className="text-center py-20 text-[color:var(--text-muted)]/80 flex flex-col items-center">
                         <Music size={48} className="mb-4 opacity-20"/>
                         <p>아직 곡이 없습니다.</p>
-                        <p className="text-sm mt-2 text-gray-600">Library 탭에서 노래 옆 + 버튼을 눌러 추가하세요.</p>
+                        <p className="text-sm mt-2 text-[color:var(--text-muted)]/60">Library 탭에서 노래 옆 + 버튼을 눌러 추가하세요.</p>
                     </div>
                 )}
                 
                 {tracks.map((track, i) => (
                     <div key={i} onClick={() => { setPlaylist(tracks); setTrack(track); }} 
-                         className="flex items-center gap-3 p-3 hover:bg-white/10 rounded-xl cursor-pointer group transition">
-                        <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                         className="flex items-center gap-3 p-3 hover:bg-[var(--bg-container-highest)] rounded-xl cursor-pointer group transition">
+                        <div className="w-12 h-12 bg-[var(--bg-container-high)] rounded-lg flex items-center justify-center overflow-hidden shrink-0">
                             {track.cover_art || track.thumbnail_link || track.thumbnailLink ? (
                                 <img 
                                     src={track.cover_art || track.thumbnail_link || track.thumbnailLink} 
@@ -187,17 +187,17 @@ export default function ListsPage() {
                                     className="w-full h-full object-cover"
                                 />
                             ) : (
-                                <Music size={20} className="text-gray-500"/>
+                                <Music size={20} className="text-[color:var(--text-muted)]/80"/>
                             )}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="truncate font-medium text-gray-200">{track.name}</p>
-                            <p className="truncate text-xs text-gray-500">{track.artist || 'Unknown'}</p>
+                            <p className="truncate font-medium text-[var(--text-main)]">{track.name}</p>
+                            <p className="truncate text-xs text-[color:var(--text-muted)]/80">{track.artist || 'Unknown'}</p>
                         </div>
                         
                         <button 
                             onClick={(e) => handleRemoveTrack(e, track.id)}
-                            className="p-2 text-gray-600 hover:text-red-500 hover:bg-white/10 rounded-full transition"
+                            className="p-2 text-[color:var(--text-muted)]/60 hover:text-red-500 hover:bg-[var(--bg-container-highest)] rounded-full transition"
                             title="플레이리스트에서 제거"
                         >
                             <X size={18} />

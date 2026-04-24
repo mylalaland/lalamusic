@@ -74,23 +74,23 @@ export default function FilesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 pb-32">
+    <div className="min-h-screen analog-surface text-[var(--text-main)] p-4 pb-32">
       <div className="flex items-center justify-between mb-6 pt-4">
         <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Icon.FolderClosed className="text-blue-400" /> Offline Files
+            <Icon.FolderClosed className="text-[var(--tertiary)]" /> Offline Files
         </h1>
-        <button onClick={loadFiles} className="p-2 bg-gray-800 rounded-full hover:bg-gray-700"><Icon.RefreshCw size={20}/></button>
+        <button onClick={loadFiles} className="p-2 bg-[var(--bg-container-high)] rounded-full hover:bg-[var(--bg-container-highest)]"><Icon.RefreshCw size={20}/></button>
       </div>
 
       {loading ? (
-        <div className="text-center text-gray-500 mt-20">Loading...</div>
+        <div className="text-center text-[color:var(--text-muted)]/80 mt-20">Loading...</div>
       ) : files.length === 0 ? (
-        <div className="text-center text-gray-500 mt-20">저장된 파일이 없습니다.</div>
+        <div className="text-center text-[color:var(--text-muted)]/80 mt-20">저장된 파일이 없습니다.</div>
       ) : (
         <div className="space-y-2">
             {files.map(file => (
-                <div key={file.id} onClick={() => handlePlay(file)} className="flex items-center gap-3 p-3 bg-gray-900/50 rounded-xl cursor-pointer hover:bg-gray-800 transition border border-gray-800">
-                    <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+                <div key={file.id} onClick={() => handlePlay(file)} className="flex items-center gap-3 p-3 bg-[color:var(--bg-container)]/50 rounded-xl cursor-pointer hover:bg-[var(--bg-container-high)] transition border border-[var(--border-strong)]">
+                    <div className="w-12 h-12 bg-[var(--bg-container-high)] rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                         {file.thumbnailLink ? (
                             <img 
                                 src={file.thumbnailLink} 
@@ -99,14 +99,14 @@ export default function FilesPage() {
                                 onError={(e) => e.currentTarget.style.display = 'none'}
                             />
                         ) : (
-                            <Icon.Music size={20} className="text-gray-500"/>
+                            <Icon.Music size={20} className="text-[color:var(--text-muted)]/80"/>
                         )}
                     </div>
                     <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate text-gray-200">{file.name}</p>
-                        <p className="text-xs text-gray-500">{file.artist} • {(file.size / 1024 / 1024).toFixed(1)} MB</p>
+                        <p className="font-medium truncate text-[var(--text-main)]">{file.name}</p>
+                        <p className="text-xs text-[color:var(--text-muted)]/80">{file.artist} • {(file.size / 1024 / 1024).toFixed(1)} MB</p>
                     </div>
-                    <button onClick={(e) => handleDelete(e, file.id)} className="p-2 text-gray-500 hover:text-red-500"><Icon.Trash2 size={18}/></button>
+                    <button onClick={(e) => handleDelete(e, file.id)} className="p-2 text-[color:var(--text-muted)]/80 hover:text-red-500"><Icon.Trash2 size={18}/></button>
                 </div>
             ))}
         </div>

@@ -31,16 +31,24 @@ export default function DesktopSidebar() {
   }
 
   return (
-    <div className="h-full flex flex-col pt-6" style={{ background: '#07090d', borderRight: '1px solid rgba(153,247,255,0.08)' }}>
+    <div className="h-full flex flex-col pt-6 analog-surface border-r border-[var(--border-light)]">
       {/* Logo */}
       <div className="px-5 mb-8">
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-8 h-8 flex items-center justify-center border border-[#99f7ff]/30" style={{ background: 'linear-gradient(135deg, rgba(153,247,255,0.15), rgba(0,241,254,0.05))', boxShadow: '0 0 15px rgba(153,247,255,0.15)' }}>
-            <Icon.Zap size={16} className="text-[#99f7ff]" />
+          <div className="w-8 h-8 flex items-center justify-center rounded-sm bg-[var(--primary)] text-[var(--on-primary)] shadow-[var(--shadow-ambient)] transition-transform group-hover:scale-105">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+              {/* Abstract Lobster Claws */}
+              <path d="M4 12C4 8 8 4 12 4S20 8 20 12" />
+              <path d="M12 4V20" />
+              <circle cx="8" cy="8" r="2" />
+              <circle cx="16" cy="8" r="2" />
+              <path d="M6 16C8 16 9 18 9 20" />
+              <path d="M18 16C16 16 15 18 15 20" />
+            </svg>
           </div>
           <div className="flex flex-col">
-            <span className="font-['Space_Grotesk'] text-lg font-bold text-[#f1f3fc] tracking-tight group-hover:text-[#99f7ff] transition-colors">LALA</span>
-            <span className="text-[8px] font-['Space_Grotesk'] text-[#44484f] tracking-[0.3em] -mt-0.5">NEURAL_AUDIO</span>
+            <span className="font-['Noto_Serif'] text-lg font-bold text-[var(--text-main)] tracking-tight">LALA MUSIC</span>
+            <span className="text-[8px] font-['Work_Sans'] text-[var(--tertiary)] tracking-[0.2em] uppercase font-bold mt-0.5">Precision Audio</span>
           </div>
         </Link>
       </div>
@@ -55,15 +63,15 @@ export default function DesktopSidebar() {
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2.5 font-['Space_Grotesk'] font-medium transition-all duration-150 text-xs tracking-[0.15em] border-l-2
+                  className={`flex items-center gap-3 px-3 py-2.5 font-['Work_Sans'] font-medium transition-all duration-150 text-xs tracking-[0.05em] rounded-md
                     ${active 
-                      ? 'text-[#99f7ff] border-[#99f7ff] bg-[#99f7ff]/5' 
-                      : 'text-[#72757d] border-transparent hover:text-[#a8abb3] hover:bg-white/3 hover:border-[#99f7ff]/20'
+                      ? 'bg-[var(--bg-container-high)] text-[var(--text-main)] shadow-[var(--shadow-pressed)]' 
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-container)]'
                     }`}
                 >
-                  <MenuIcon size={18} className={active ? 'text-[#99f7ff]' : ''} />
+                  <MenuIcon size={18} className={active ? 'text-[var(--tertiary)]' : 'text-[var(--primary)]'} />
                   <span>{item.name}</span>
-                  {active && <div className="ml-auto w-1 h-1 bg-[#99f7ff] animate-pulse" />}
+                  {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[var(--tertiary)] shadow-[0_0_8px_var(--tertiary)]" />}
                 </Link>
               </li>
             )
@@ -72,10 +80,10 @@ export default function DesktopSidebar() {
       </nav>
        
       {/* Footer */}
-      <div className="px-5 py-4 border-t border-[#99f7ff]/5">
+      <div className="px-5 py-4 border-t border-[var(--border-light)]">
         <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 bg-[#00f1fe] animate-pulse" />
-          <span className="text-[9px] text-[#44484f] font-['Space_Grotesk'] tracking-[0.2em]">SYS_ACTIVE v3.0</span>
+          <div className="w-1.5 h-1.5 rounded-full bg-[var(--tertiary)]" />
+          <span className="text-[9px] text-[var(--text-muted)] font-['Work_Sans'] tracking-[0.1em] uppercase">SYSTEM READY</span>
         </div>
       </div>
     </div>
