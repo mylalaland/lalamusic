@@ -151,7 +151,7 @@ export default function DesktopLists() {
             <div className="flex flex-col mt-1">
               {tracks.map((track, index) => {
                 const isActive = currentTrack?.id === track.id
-                const fmt = getFormatFromMime(track.mime_type ?? undefined, track.title || track.file_name)
+                const fmt = getFormatFromMime(track.mime_type ?? undefined, (track.title || track.file_name) ?? undefined)
                 return (
                   <div key={track.id} onClick={() => handlePlayTrack(track)}
                     className={`group grid grid-cols-[30px_1fr_150px_60px_60px] gap-3 items-center px-3 py-2.5 cursor-pointer transition-all border-l-2 ${
