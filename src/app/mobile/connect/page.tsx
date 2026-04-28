@@ -10,7 +10,7 @@ import { usePlayerStore } from '@/lib/store/usePlayerStore'
 import { useConnectStore } from '@/lib/store/useConnectStore'
 import { useSettingsStore } from '@/lib/store/useSettingsStore'
 import { saveToOffline } from '../../../lib/db/offline'
-import { Folder, Music, Search, Grid, List, X, Sparkles, RefreshCcw, ChevronRight, Home, Play, FileAudio, ArrowLeft, Loader2, Download, CheckCircle2, ListPlus } from 'lucide-react'
+import { Folder, Music, Search, Grid, List, X, Sparkles, RefreshCcw, ChevronRight, Home, Play, FileAudio, ArrowLeft, Loader2, Download, CheckCircle2, ListPlus, Shuffle } from 'lucide-react'
 
 const Icon = {
   Folder: Folder as any,
@@ -29,7 +29,8 @@ const Icon = {
   Loader2: Loader2 as any,
   Download: Download as any,
   CheckCircle2: CheckCircle2 as any,
-  ListPlus: ListPlus as any
+  ListPlus: ListPlus as any,
+  Shuffle: Shuffle as any
 }
 
 export default function ConnectPage() {
@@ -181,6 +182,31 @@ export default function ConnectPage() {
     loadFolder(currentFolder.id) // 원본 데이터 다시 로드
   }
 
+  // [NEW] Play All 핸들러
+  const handlePlayAllAudio = () => {
+    const audioFiles = items.filter(i => i.mimeType.includes('audio'))
+    if (audioFiles.length === 0) return
+    const musicFiles = audioFiles.map(f => ({
+        id: f.id, name: f.name, artist: 'Google Drive',
+        thumbnailLink: f.thumbnailLink, src: f.id, mimeType: f.mimeType
+    }))
+    setPlaylist(musicFiles)
+    setTrack(musicFiles[0])
+  }
+
+  // [NEW] Shuffle Play 핸들러
+  const handleShuffleAllAudio = () => {
+    const audioFiles = items.filter(i => i.mimeType.includes('audio'))
+    if (audioFiles.length === 0) return
+    const musicFiles = audioFiles.map(f => ({
+        id: f.id, name: f.name, artist: 'Google Drive',
+        thumbnailLink: f.thumbnailLink, src: f.id, mimeType: f.mimeType
+    }))
+    const shuffled = [...musicFiles].sort(() => Math.random() - 0.5)
+    setPlaylist(shuffled)
+    setTrack(shuffled[0])
+  }
+
   // [NEW] 대기열에 추가 핸들러
   const handleAddToQueue = (e: React.MouseEvent, item: any) => {
     e.stopPropagation()
@@ -329,6 +355,19 @@ export default function ConnectPage() {
 
       {/* 컨텐츠 리스트 */}
       <div className={`p-2 ${viewMode === 'grid' ? 'grid grid-cols-3 gap-2' : 'space-y-1'}`}>
+        {/* Play All / Shuffle 액션 바 (오디오 파일이 있을 때만) */}
+        {!loading && items.filter(i => i.mimeType.includes('audio')).length > 0 && (
+            <div className="flex gap-2 mb-3 col-span-full">
+                <button onClick={handlePlayAllAudio} 
+                        className="flex-1 py-3 bg-[var(--tertiary)]/10 text-[var(--tertiary)] rounded-xl font-bold hover:bg-[var(--tertiary)]/20 flex items-center justify-center gap-2 transition border border-[var(--tertiary)]/20">
+                    <Icon.Play size={18} fill="currentColor"/> Play All ({items.filter(i => i.mimeType.includes('audio')).length})
+                </button>
+                <button onClick={handleShuffleAllAudio} 
+                        className="w-14 bg-[var(--bg-container-high)] rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-container-highest)] transition border border-[var(--border-strong)]">
+                    <Icon.Shuffle size={22} />
+                </button>
+            </div>
+        )}
         {loading ? (
             <div className="col-span-full text-center py-20 text-[color:var(--text-muted)]/80 flex flex-col items-center">
                 <Icon.Loader2 className="animate-spin mb-2"/> <span>Loading...</span>

@@ -11,7 +11,7 @@ import { useLibraryStore } from '@/lib/store/useLibraryStore'
 import { useSettingsStore } from '@/lib/store/useSettingsStore'
 import { 
   RefreshCw, Music, Loader2, Plus, ListMusic, Trash2, ArrowLeft, Sparkles, 
-  ChevronRight, Folder, ChevronDown, Map, Shuffle, Play, FileMusic, X, Calendar, ArrowUpNarrowWide, ArrowDownWideNarrow, CheckSquare, Square, Bookmark
+  ChevronRight, Folder, ChevronDown, Map, Shuffle, Play, FileMusic, X, Calendar, ArrowUpNarrowWide, ArrowDownWideNarrow, CheckSquare, Square, Bookmark, Library
 } from 'lucide-react'
 import FolderTreeItem from '@/components/shared/FolderTreeItem'
 import TrackItem from '@/components/shared/TrackItem'
@@ -38,7 +38,8 @@ const Icon = {
   ArrowDownWideNarrow: ArrowDownWideNarrow as any,
   CheckSquare: CheckSquare as any,
   Square: Square as any,
-  Bookmark: Bookmark as any
+  Bookmark: Bookmark as any,
+  Library: Library as any
 }
 
 
@@ -193,6 +194,12 @@ export default function LibraryPage() {
     setTrack(shuffled[0]) 
   }
 
+  const handlePlayAll = (list: any[]) => {
+    if (!list || list.length === 0) return alert('재생할 곡이 없습니다.')
+    setPlaylist(list)
+    setTrack(list[0])
+  }
+
   const handleSync = async () => {
     // ... (기존 동기화 로직과 동일, 생략 없이 전체 포함) ...
     const settings = await getScanSettings()
@@ -294,8 +301,9 @@ export default function LibraryPage() {
                     <Icon.ArrowLeft />
                 </button>
             )}
+            {currentView === 'menu' && <Icon.Library size={24} className="text-[var(--tertiary)]" />}
             <div className="flex flex-col justify-center">
-                <h1 className="font-bold text-xl leading-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                <h1 className="font-bold text-2xl leading-tight text-[var(--text-main)]">
                     {currentView === 'menu' ? 'Library' : 
                      currentView === 'foldermap' ? 'Browse Folders' : 
                      currentView === 'folder_detail' ? selectedFolder?.name :
@@ -393,6 +401,20 @@ export default function LibraryPage() {
                         <span className="text-[var(--text-main)] font-medium animate-pulse">
                             {isAiMode ? "AI가 보석 같은 곡을 찾는 중..." : "Loading..."}
                         </span>
+                    </div>
+                )}
+
+                {/* Play All / Shuffle 액션 바 */}
+                {!loading && tracks.length > 0 && (
+                    <div className="flex gap-2 px-2 mb-3">
+                        <button onClick={() => handlePlayAll(tracks)} 
+                                className="flex-1 py-3 bg-[var(--tertiary)]/10 text-[var(--tertiary)] rounded-xl font-bold hover:bg-[var(--tertiary)]/20 flex items-center justify-center gap-2 transition border border-[var(--tertiary)]/20">
+                            <Icon.Play size={18} fill="currentColor"/> Play All ({tracks.length})
+                        </button>
+                        <button onClick={() => handleShufflePlay(tracks)} 
+                                className="w-14 bg-[var(--bg-container-high)] rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-container-highest)] transition border border-[var(--border-strong)]">
+                            <Icon.Shuffle size={22} />
+                        </button>
                     </div>
                 )}
 
@@ -517,6 +539,19 @@ export default function LibraryPage() {
                     <button onClick={() => setState({ currentView: 'foldermap' })} className="p-2 bg-[var(--bg-container-high)] rounded-full hover:bg-[var(--bg-container-highest)]"><Icon.ArrowLeft/></button>
                     <div className="flex-1 overflow-hidden"><h2 className="text-xl font-bold truncate">{selectedFolder.name}</h2></div>
                 </div>
+                {/* Play All / Shuffle 액션 바 */}
+                {folderTracks.length > 0 && (
+                    <div className="flex gap-2 px-2 mb-3">
+                        <button onClick={() => handlePlayAll(folderTracks)} 
+                                className="flex-1 py-3 bg-[var(--tertiary)]/10 text-[var(--tertiary)] rounded-xl font-bold hover:bg-[var(--tertiary)]/20 flex items-center justify-center gap-2 transition border border-[var(--tertiary)]/20">
+                            <Icon.Play size={18} fill="currentColor"/> Play All ({folderTracks.length})
+                        </button>
+                        <button onClick={() => handleShufflePlay(folderTracks)} 
+                                className="w-14 bg-[var(--bg-container-high)] rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-container-highest)] transition border border-[var(--border-strong)]">
+                            <Icon.Shuffle size={22} />
+                        </button>
+                    </div>
+                )}
                 {folderTracks.map((track, i) => (
                     <TrackItem 
                         key={track.id}

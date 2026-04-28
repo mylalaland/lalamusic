@@ -367,9 +367,12 @@ export default function GlobalPlayer() {
     const artist = track.artist || 'Unknown Artist'
     const album = track.album || 'Lala Music'
     const artwork: MediaImage[] = []
-    let mediaArt = track.cover_art || track.thumbnailLink || null
+    // [FIX] localCoverArt를 최우선으로 사용 (비동기 로드 후 재갱신됨)
+    let mediaArt = localCoverArt || track.cover_art || track.thumbnailLink || null
     if (typeof mediaArt === 'string' && !mediaArt.includes('[object Object]')) {
-      artwork.push({ src: mediaArt, sizes: '512x512', type: 'image/png' })
+      // data URI는 type 지정 불필요, http URL은 image/jpeg로 추정
+      const imgType = mediaArt.startsWith('data:') ? mediaArt.split(';')[0].split(':')[1] : 'image/png'
+      artwork.push({ src: mediaArt, sizes: '512x512', type: imgType })
     }
     navigator.mediaSession.metadata = new MediaMetadata({ title, artist, album, artwork })
     try {
@@ -384,7 +387,7 @@ export default function GlobalPlayer() {
         }
       })
     } catch (e) { console.warn('Media Session Action Error:', e) }
-  }, [track])
+  }, [track, localCoverArt])
 
   useEffect(() => {
     if (!navigator.mediaSession || !audioRef.current) return

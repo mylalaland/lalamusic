@@ -41,23 +41,50 @@ export async function GET(req: NextRequest) {
 
     const headers = new Headers(response.headers)
     
-    // 오디오 헤더 및 MIME Type 강제 설정 (FLAC 버퍼링 방지 및 M4A 호환성)
-    let contentType = hintMime || headers.get('Content-Type') || 'audio/mpeg'
+    // [FIX] 파일명 기반 MIME 판별 최우선 (Google Drive가 octet-stream으로 내려주는 경우 대비)
     const lowerName = fileName.toLowerCase()
+    let contentType = ''
     
-    if (lowerName.endsWith('.flac')) {
-        contentType = 'audio/flac'
-    } else if (lowerName.endsWith('.m4a') || lowerName.endsWith('.mp4')) {
+    // 1. 파일명 확장자로 먼저 판별 (가장 신뢰할 수 있음)
+    if (lowerName.endsWith('.m4a') || lowerName.endsWith('.mp4')) {
         contentType = 'audio/mp4'
-    } else if (contentType.includes('flac') || contentType.includes('x-flac')) {
+    } else if (lowerName.endsWith('.flac')) {
         contentType = 'audio/flac'
-    } else if (contentType.includes('m4a') || contentType.includes('mp4')) {
-        contentType = 'audio/mp4'
+    } else if (lowerName.endsWith('.mp3')) {
+        contentType = 'audio/mpeg'
+    } else if (lowerName.endsWith('.wav')) {
+        contentType = 'audio/wav'
+    } else if (lowerName.endsWith('.ogg')) {
+        contentType = 'audio/ogg'
+    } else if (lowerName.endsWith('.aac')) {
+        contentType = 'audio/aac'
+    } else {
+        // 2. hint MIME → 응답 헤더 → fallback 순서
+        const rawType = hintMime || headers.get('Content-Type') || 'audio/mpeg'
+        
+        // octet-stream은 무시하고 audio/mpeg fallback
+        if (rawType.includes('octet-stream')) {
+            contentType = 'audio/mpeg'
+        } else if (rawType.includes('m4a') || rawType.includes('mp4')) {
+            contentType = 'audio/mp4'
+        } else if (rawType.includes('flac') || rawType.includes('x-flac')) {
+            contentType = 'audio/flac'
+        } else {
+            contentType = rawType
+        }
     }
 
     headers.set('Content-Type', contentType)
     headers.set('Cache-Control', 'public, max-age=3600')
     headers.set('Accept-Ranges', 'bytes')
+    
+    // [FIX] Content-Length 보존 (Windows Chrome M4A 재생에 필수)
+    // Google Drive API의 Content-Length를 유지하되, Transfer-Encoding: chunked 방지
+    const contentLength = response.headers.get('Content-Length')
+    if (contentLength) {
+        headers.set('Content-Length', contentLength)
+        headers.delete('Transfer-Encoding')
+    }
 
     // 다운로드 요청 처리
     if (isDownload) {

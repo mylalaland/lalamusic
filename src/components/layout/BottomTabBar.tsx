@@ -17,7 +17,7 @@ export default function BottomTabBar() {
     { name: 'LIBRARY', href: '/mobile/library', icon: Icon.Library },
     { name: 'LISTS', href: '/mobile/lists', icon: Icon.ListMusic },
     { name: 'FILES', href: '/mobile/files', icon: Icon.FolderClosed },
-    { name: 'CONFIG', href: '/mobile/settings', icon: Icon.Settings },
+    { name: 'SETTINGS', href: '/mobile/settings', icon: Icon.Settings },
   ]
 
   return (

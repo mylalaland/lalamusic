@@ -299,9 +299,16 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen analog-surface text-[var(--text-main)] p-4 pb-32">
-      <h1 className="text-2xl font-bold mb-8 px-2 pt-4">Settings</h1>
+    <div className="min-h-screen analog-surface text-[var(--text-main)] pb-32">
+      {/* Header */}
+      <div className="sticky top-0 bg-[color:var(--bg-surface)]/90 backdrop-blur-md z-20 border-b border-[var(--border-strong)]">
+        <div className="px-4 h-[60px] flex items-center gap-3">
+          <Icon.Settings size={24} className="text-[var(--tertiary)]" />
+          <h1 className="text-2xl font-bold text-[var(--text-main)]">Settings</h1>
+        </div>
+      </div>
 
+      <div className="p-4">
       <div className="space-y-6 max-w-md mx-auto">
         {/* 계정 정보 */}
         <div className="bg-[color:var(--bg-container)]/50 rounded-xl p-4 flex items-center gap-4 border border-[var(--border-strong)]">
@@ -686,6 +693,7 @@ export default function SettingsPage() {
             <button onClick={handleResetFolder} className="flex-1 py-4 bg-[var(--bg-container-high)] hover:bg-[var(--bg-container-highest)] hover:text-[var(--text-main)] transition rounded-xl text-[var(--text-muted)] text-sm font-bold">스캔 설정 초기화</button>
             <button onClick={handleLogout} className="flex-1 py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-[var(--text-main)] transition rounded-xl flex items-center justify-center gap-2 border border-red-500/20 font-bold"><Icon.LogOut size={18} /> Logout</button>
         </div>
+      </div>
       </div>
 
       {/* --- 통합 폴더 선택 모달 --- */}

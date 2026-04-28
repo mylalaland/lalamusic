@@ -95,30 +95,35 @@ export default function ListsPage() {
   }
 
   return (
-    <div className="min-h-screen analog-surface text-[var(--text-main)] flex flex-col p-4 pb-32">
-      <div className="flex items-center justify-between mb-6 pt-4">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          {selectedPlaylist ? (
-              <button onClick={handleBack} className="mr-2 hover:bg-[var(--bg-container-high)] rounded-full p-1 transition">
-                  <ArrowLeft />
+    <div className="min-h-screen analog-surface text-[var(--text-main)] flex flex-col pb-32">
+      {/* Header */}
+      <div className="sticky top-0 bg-[color:var(--bg-surface)]/90 backdrop-blur-md z-20 border-b border-[var(--border-strong)]">
+        <div className="px-4 h-[60px] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {selectedPlaylist ? (
+                <button onClick={handleBack} className="p-2 -ml-2 hover:bg-[var(--bg-container-high)] rounded-full transition">
+                    <ArrowLeft />
+                </button>
+            ) : (
+                <ListMusic size={24} className="text-[var(--tertiary)]" />
+            )}
+            <h1 className="text-2xl font-bold text-[var(--text-main)] truncate max-w-[200px]">
+              {selectedPlaylist ? selectedPlaylist.name : 'Playlists'}
+            </h1>
+          </div>
+          
+          {!selectedPlaylist && (
+              <button 
+                  onClick={handleCreate} 
+                  className="p-3 bg-[var(--tertiary)] rounded-full hover:bg-[var(--tertiary)]/80 shadow-lg transition active:scale-95"
+              >
+                  <Plus size={24} />
               </button>
-          ) : (
-              <ListMusic size={32} className="text-[var(--tertiary)]" />
           )}
-          <span className="truncate max-w-[200px]">
-            {selectedPlaylist ? selectedPlaylist.name : 'Playlists'}
-          </span>
-        </h1>
-        
-        {!selectedPlaylist && (
-            <button 
-                onClick={handleCreate} 
-                className="p-3 bg-[var(--tertiary)] rounded-full hover:bg-[var(--tertiary)]/80 shadow-lg transition active:scale-95"
-            >
-                <Plus size={24} />
-            </button>
-        )}
+        </div>
       </div>
+
+      <div className="p-4 flex-1">
 
 
         {!selectedPlaylist && (
@@ -206,6 +211,7 @@ export default function ListsPage() {
                 ))}
             </div>
         )}
+      </div>
     </div>
   )
 }
