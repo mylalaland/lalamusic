@@ -1,6 +1,119 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getValidGoogleToken } from '../../../lib/google/token'
+import { spawn } from 'child_process'
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const fileId = searchParams.get('id')
+  const isDownload = searchParams.get('download') === 'true'
+  const fileName = searchParams.get('name') || 'music.mp3'
+  const hintMime = searchParams.get('mimeType') || ''
+
+  if (!fileId) return new NextResponse('File ID required', { status: 400 })
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return new NextResponse('Unauthorized', { status: 401 })
+  }
+
+  // Safari compatibility: capture Range header
+  const range = req.headers.get('range')
+
+  try {
+    const token = await getValidGoogleToken(user.id)
+    const driveUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
+    const fetchHeaders: HeadersInit = {
+      'Authorization': `Bearer ${token}`
+    }
+    if (range) {
+      fetchHeaders['Range'] = range
+    }
+
+    const response = await fetch(driveUrl, { headers: fetchHeaders })
+    const headers = new Headers(response.headers)
+
+    // Determine MIME based on file extension first
+    const lowerName = fileName.toLowerCase()
+    let contentType = ''
+    if (lowerName.endsWith('.m4a') || lowerName.endsWith('.mp4')) {
+      contentType = 'audio/mp4'
+    } else if (lowerName.endsWith('.flac')) {
+      contentType = 'audio/flac'
+    } else if (lowerName.endsWith('.mp3')) {
+      contentType = 'audio/mpeg'
+    } else if (lowerName.endsWith('.wav')) {
+      contentType = 'audio/wav'
+    } else if (lowerName.endsWith('.ogg')) {
+      contentType = 'audio/ogg'
+    } else if (lowerName.endsWith('.aac')) {
+      contentType = 'audio/aac'
+    } else {
+      const rawType = hintMime || headers.get('Content-Type') || 'audio/mpeg'
+      if (rawType.includes('octet-stream')) {
+        contentType = 'audio/mpeg'
+      } else if (rawType.includes('m4a') || rawType.includes('mp4')) {
+        contentType = 'audio/mp4'
+      } else if (rawType.includes('flac') || rawType.includes('x-flac')) {
+        contentType = 'audio/flac'
+      } else {
+        contentType = rawType
+      }
+    }
+
+    // If FLAC, transcode to MP3 on-the-fly for browsers lacking native support (e.g., iOS Safari)
+    let bodyStream: ReadableStream<Uint8Array> | null = null
+    if (contentType === 'audio/flac') {
+      // Spawn ffmpeg process: input from pipe, output mp3 to stdout
+      const ffmpeg = spawn('ffmpeg', ['-i', 'pipe:0', '-f', 'mp3', '-ab', '192k', '-ac', '2', 'pipe:1'])
+      // Pipe the original response body into ffmpeg stdin
+      response.body?.pipeTo(new WritableStream({
+        write(chunk) {
+          ffmpeg.stdin?.write(chunk)
+        },
+        close() {
+          ffmpeg.stdin?.end()
+        }
+      }))
+      // Convert ffmpeg stdout to a ReadableStream for NextResponse
+      const { readable, writable } = new TransformStream()
+      const writer = writable.getWriter()
+      ffmpeg.stdout?.on('data', (chunk: Buffer) => {
+        writer.write(new Uint8Array(chunk))
+      })
+      ffmpeg.stdout?.on('end', () => {
+        writer.close()
+      })
+      bodyStream = readable
+      contentType = 'audio/mpeg' // Transcoded to MP3
+    } else {
+      bodyStream = response.body as ReadableStream<Uint8Array>
+    }
+
+    headers.set('Content-Type', contentType)
+    headers.set('Cache-Control', 'public, max-age=3600')
+    headers.set('Accept-Ranges', 'bytes')
+
+    const contentLength = response.headers.get('Content-Length')
+    if (contentLength && contentType !== 'audio/mpeg') {
+      headers.set('Content-Length', contentLength)
+      headers.delete('Transfer-Encoding')
+    }
+
+    if (isDownload) {
+      const safeName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_')
+      const encodedName = encodeURIComponent(fileName).replace(/['()]/g, escape).replace(/\*/g, '%2A')
+      headers.set('Content-Disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`)
+    }
+
+    return new Response(bodyStream, { status: response.status, headers })
+  } catch (error) {
+    console.error('Stream Error:', error)
+    return new NextResponse('Error streaming file', { status: 500 })
+  }
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
