@@ -56,8 +56,30 @@ export default function GlobalPlayer() {
   const [isSeeking, setIsSeeking] = useState(false)
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off')
   const [sleepTimer, setSleepTimer] = useState<number>(0)
+  const audioContextUnlockedRef = useRef(false)
 
-  useEffect(() => { console.log("GlobalPlayer Mounted") }, [])
+  // [FIX] iOS Safari: AudioContext must be unlocked via user gesture
+  useEffect(() => {
+    console.log("GlobalPlayer Mounted")
+    const unlockAudio = () => {
+      if (audioContextUnlockedRef.current) return
+      // Create a silent buffer and play it to unlock iOS audio
+      if (audioRef.current) {
+        const silentPlay = audioRef.current.play()
+        silentPlay?.then(() => { audioRef.current?.pause() }).catch(() => {})
+      }
+      if (equalizerRef.current?.audioContext?.state === 'suspended') {
+        equalizerRef.current.audioContext.resume()
+      }
+      audioContextUnlockedRef.current = true
+    }
+    document.addEventListener('touchstart', unlockAudio, { once: true })
+    document.addEventListener('click', unlockAudio, { once: true })
+    return () => {
+      document.removeEventListener('touchstart', unlockAudio)
+      document.removeEventListener('click', unlockAudio)
+    }
+  }, [])
 
   useEffect(() => {
     if (viewMode === 'queue' && activeTrackRef.current) {
@@ -77,6 +99,7 @@ export default function GlobalPlayer() {
       if (lyricsCache.has(track.id)) {
         const cached = lyricsCache.get(track.id)
         if (cached) { setDisplayLyrics(cached); return }
+        setDisplayLyrics(null); return
       }
 
       setLyricsLoading(true)
@@ -98,10 +121,31 @@ export default function GlobalPlayer() {
         return
       }
 
+      // [FIX] 파일명에서 아티스트/제목 파싱 (DesktopPlayer와 동일한 고급 로직)
+      let searchArtist = track.artist || ''
+      let searchTitle = track.title || track.name || ''
+      // 확장자 제거
+      searchTitle = searchTitle.replace(/\.(mp3|flac|m4a|wav|aac|ogg|wma|opus)$/i, '')
+      // 넘버링 제거 (앞쪽 "001 ", "01-" 등)
+      searchTitle = searchTitle.replace(/^\d{1,4}[\s._-]+/, '')
+      // "아티스트-번호-제목" or "아티스트 - 제목" 패턴
+      if (!searchArtist || searchArtist === 'Unknown' || searchArtist === 'Google Drive' || searchArtist === 'Unknown Artist') {
+        const dashSplit = searchTitle.split(/[-–—]/)
+        if (dashSplit.length >= 2) {
+          searchArtist = dashSplit[0].replace(/\(.*?\)/g, '').trim()
+          // 마지막 부분을 제목으로 (중간에 트랙번호가 있을 수 있으므로)
+          searchTitle = dashSplit[dashSplit.length - 1].trim()
+          // 중간 부분이 숫자면 스킵
+          if (dashSplit.length >= 3 && /^\d+$/.test(dashSplit[1].trim())) {
+            searchTitle = dashSplit.slice(2).join('-').trim()
+          }
+        }
+      }
+
       // 3. 외부 소스에서 가사 검색 (Alsong + LRCLIB 병렬)
       const externalResult = await getExternalLyrics(
-        track.artist || '', 
-        track.title || track.name, 
+        searchArtist, 
+        searchTitle, 
         (track as any).duration,
         ['Alsong', 'LRCLIB']
       )
@@ -237,14 +281,29 @@ export default function GlobalPlayer() {
         : `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
             
       if (audioRef.current.src.indexOf(track.id) === -1) {
+        // [FIX] iOS Safari: crossOrigin must be set BEFORE src assignment
+        audioRef.current.crossOrigin = "anonymous"
         audioRef.current.src = newSrc
         audioRef.current.playbackRate = playbackRate
         audioRef.current.volume = isMuted ? 0 : volume
-        audioRef.current.crossOrigin = "anonymous"
         retryCountRef.current = 0
         audioRef.current.load()
-        if ((track as any).initialPosition) audioRef.current.currentTime = (track as any).initialPosition
-        if (isPlaying) audioRef.current.play().catch(() => {})
+        
+        // [FIX] iOS Safari: Use canplaythrough event for reliable playback
+        const handleCanPlay = () => {
+          if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
+          if (isPlaying) {
+            // Resume AudioContext if suspended (iOS requirement)
+            if (equalizerRef.current?.audioContext?.state === 'suspended') {
+              equalizerRef.current.audioContext.resume()
+            }
+            audioRef.current!.play().catch((e) => {
+              console.warn('iOS play blocked:', e)
+            })
+          }
+          audioRef.current!.removeEventListener('canplaythrough', handleCanPlay)
+        }
+        audioRef.current.addEventListener('canplaythrough', handleCanPlay)
       } else {
         if ((track as any).initialPosition) {
           audioRef.current.currentTime = (track as any).initialPosition
@@ -258,10 +317,23 @@ export default function GlobalPlayer() {
   useEffect(() => {
     if (!audioRef.current) return
     if (isPlaying) {
-      if (equalizerRef.current && equalizerRef.current.audioContext.state === 'suspended') {
+      // [FIX] iOS Safari: Always resume AudioContext before play
+      if (equalizerRef.current?.audioContext?.state === 'suspended') {
         equalizerRef.current.audioContext.resume()
       }
-      audioRef.current.play().catch(() => {})
+      // [FIX] Only play if audio has data (readyState >= HAVE_CURRENT_DATA)
+      if (audioRef.current.readyState >= 2) {
+        audioRef.current.play().catch((e) => {
+          console.warn('Play state sync blocked:', e)
+        })
+      } else {
+        // Wait for enough data before playing
+        const onReady = () => {
+          audioRef.current?.play().catch(() => {})
+          audioRef.current?.removeEventListener('canplay', onReady)
+        }
+        audioRef.current.addEventListener('canplay', onReady)
+      }
     } else {
       audioRef.current.pause()
     }

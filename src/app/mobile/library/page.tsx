@@ -113,18 +113,17 @@ export default function LibraryPage() {
       
       // 🟢 [정렬 로직 강화] 날짜/제목/가수/앨범 + 오름/내림차순
       newTracks.sort((a: any, b: any) => {
-          let valA = '', valB = '';
           if (sortBy === 'date') {
-              // created_at 기준 (없으면 id)
-              valA = a.created_at || a.id;
-              valB = b.created_at || b.id;
+              // [FIX] 날짜 정렬: Date 객체 비교 (localeCompare로는 날짜 정렬 불가)
+              const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+              const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+              return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
           } else {
-              valA = a[sortBy] || '';
-              valB = b[sortBy] || '';
+              const valA = (a[sortBy] || a.name || '').toLowerCase();
+              const valB = (b[sortBy] || b.name || '').toLowerCase();
+              if (sortOrder === 'asc') return valA.localeCompare(valB, 'ko');
+              else return valB.localeCompare(valA, 'ko');
           }
-
-          if (sortOrder === 'asc') return valA.localeCompare(valB);
-          else return valB.localeCompare(valA); // 내림차순
       })
 
       const more = newTracks.length >= limit

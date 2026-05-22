@@ -9,8 +9,46 @@ function normalizeText(text: string) {
     .replace(/\(.*?\)/g, '')     // 괄호 내용 보수적으로 제거 (옵션)
     .replace(/\{.*?\}/g, '')     // 중괄호 내용 제거
     .replace(/(- )?(official|audio|video|mv|lyric|lyrics|가사).*/ig, '') // 꼬리표 제거
-    .replace(/\.(mp3|flac|m4a|wav|aac|ogg)$/i, '') // 확장자 제거
+    .replace(/\.(mp3|flac|m4a|wav|aac|ogg|wma|opus)$/i, '') // 확장자 제거
     .trim()
+}
+
+// [NEW] 고급 파일명 파싱: "001 IVE (아이브)-01-BANG BANG.flac" → {artist: "IVE", title: "BANG BANG"}
+function parseFileName(fileName: string, existingArtist?: string): { artist: string, title: string } {
+  let name = fileName
+  // 1. 확장자 제거
+  name = name.replace(/\.(mp3|flac|m4a|wav|aac|ogg|wma|opus)$/i, '')
+  // 2. 앞쪽 넘버링 제거 ("001 ", "01-", "Track 3 - " 등)
+  name = name.replace(/^\d{1,4}[\s._-]+/, '')
+  name = name.replace(/^[Tt]rack\s*\d+[\s._-]+/, '')
+  // 3. [MV], (Official Audio) 등 제거
+  name = name.replace(/\[.*?\]/g, '').replace(/\(official.*?\)/ig, '').trim()
+  
+  // 4. 아티스트 - 제목 분리
+  let artist = existingArtist || ''
+  let title = name
+  
+  const needsArtistParsing = !artist || artist === 'Unknown' || artist === 'Google Drive' || artist === 'Unknown Artist' || artist === 'unknown'
+  
+  if (needsArtistParsing && name.includes('-')) {
+    const dashParts = name.split(/\s*[-–—]\s*/)
+    if (dashParts.length >= 2) {
+      // 첫 번째 파트가 아티스트
+      artist = dashParts[0].replace(/\(.*?\)/g, '').trim()
+      
+      // 중간에 트랙번호가 있으면 스킵 (예: "IVE-01-BANG BANG")
+      if (dashParts.length >= 3 && /^\d+$/.test(dashParts[1].trim())) {
+        title = dashParts.slice(2).join('-').trim()
+      } else {
+        title = dashParts.slice(1).join('-').trim()
+      }
+    }
+  }
+  
+  // 5. 한글 괄호 내 부제 제거 (검색 정확도 향상)
+  title = title.replace(/\(.*?\)/g, '').trim()
+  
+  return { artist: artist || '', title: title || name }
 }
 
 // LRC 타임스탬프 포함 여부 판별
@@ -19,7 +57,6 @@ function isSyncedLyrics(lyrics: string): boolean {
 }
 
 // 1. LRCLIB (해외 곡, 팝송에 강력함 - 무료/오픈소스)
-// [CHANGED] syncedLyrics와 plainLyrics를 분리 반환
 async function getLrcLibLyrics(artist: string, title: string, duration?: number): Promise<{ synced: string | null, plain: string | null }> {
   try {
     const params = new URLSearchParams({
@@ -32,7 +69,26 @@ async function getLrcLibLyrics(artist: string, title: string, duration?: number)
       headers: { 'User-Agent': 'LalaMusic/1.0' }
     })
 
-    if (!res.ok) return { synced: null, plain: null }
+    if (!res.ok) {
+      // [NEW] 검색 실패 시 LRCLIB search API로 폴백 (제목만으로 검색)
+      if (title) {
+        const searchRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(title)}`, {
+          headers: { 'User-Agent': 'LalaMusic/1.0' }
+        })
+        if (searchRes.ok) {
+          const searchData = await searchRes.json()
+          if (Array.isArray(searchData) && searchData.length > 0) {
+            // 첫 번째 결과 사용
+            const best = searchData[0]
+            return {
+              synced: best.syncedLyrics || null,
+              plain: best.plainLyrics || null
+            }
+          }
+        }
+      }
+      return { synced: null, plain: null }
+    }
 
     const data = await res.json()
     return {
@@ -46,7 +102,6 @@ async function getLrcLibLyrics(artist: string, title: string, duration?: number)
 }
 
 // 2. 알송 (한국 노래, K-POP에 강력함)
-// [CHANGED] 반환된 가사의 LRC 포맷 여부를 판별하여 분리
 async function getAlsongLyrics(artist: string, title: string): Promise<{ synced: string | null, plain: string | null }> {
   try {
     const soapBody = `<?xml version="1.0" encoding="UTF-8"?>
@@ -112,7 +167,8 @@ function escapeXml(unsafe: string) {
   })
 }
 
-// 3. [CHANGED] 통합 검색 함수 — 싱크/일반 가사를 분리하여 반환
+// 3. 통합 검색 함수 — 싱크/일반 가사를 분리하여 반환
+// [IMPROVED] 고급 파일명 파싱, LRCLIB search 폴백, 재시도 로직 추가
 export async function getExternalLyrics(
   artist: string, 
   title: string, 
@@ -125,12 +181,13 @@ export async function getExternalLyrics(
   source: string | null,
   error?: string
 }> {
-  // 텍스트 정규화
-  let searchArtist = normalizeText(artist)
-  let searchTitle = normalizeText(title)
+  // [IMPROVED] 고급 파일명 파싱 사용
+  const parsed = parseFileName(title, artist)
+  let searchArtist = normalizeText(parsed.artist)
+  let searchTitle = normalizeText(parsed.title)
 
   // 구글 드라이브 파일이라 가수 정보가 없고 "가수 - 제목" 형태라면 분리
-  if ((!searchArtist || searchArtist.toLowerCase() === 'unknown artist') && searchTitle.includes('-')) {
+  if ((!searchArtist || searchArtist.toLowerCase() === 'unknown artist' || searchArtist.toLowerCase() === 'google drive') && searchTitle.includes('-')) {
     const parts = searchTitle.split('-')
     if (parts.length >= 2) {
       searchArtist = parts[0].trim()
@@ -138,8 +195,8 @@ export async function getExternalLyrics(
     }
   }
 
-  searchArtist = searchArtist || artist
-  searchTitle = searchTitle || title
+  searchArtist = searchArtist || artist || ''
+  searchTitle = searchTitle || title || ''
 
   // 모든 소스에 대해 동시에 요청 (병렬)
   const promises = sources.map(async (source) => {
@@ -181,6 +238,20 @@ export async function getExternalLyrics(
       syncedLyrics: bestSynced,
       plainLyrics: bestPlain,
       source: syncSource || plainSource
+    }
+  }
+
+  // [NEW] 재시도: 아티스트 없이 제목만으로 재검색 (파일명에서 아티스트 분리 실패한 경우)
+  if (searchArtist) {
+    const retryTitle = normalizeText(title).replace(/\.(mp3|flac|m4a|wav|aac|ogg|wma|opus)$/i, '').replace(/^\d{1,4}[\s._-]+/, '')
+    const retryResults = await Promise.all([
+      getLrcLibLyrics('', retryTitle, duration),
+      getAlsongLyrics('', retryTitle),
+    ])
+    
+    for (const r of retryResults) {
+      if (r.synced) return { success: true, syncedLyrics: r.synced, plainLyrics: null, source: 'retry' }
+      if (r.plain) return { success: true, syncedLyrics: null, plainLyrics: r.plain, source: 'retry' }
     }
   }
 

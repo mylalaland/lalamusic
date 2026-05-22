@@ -91,16 +91,25 @@
 @layer base {
   * {
     border-color: var(--border);
+    -webkit-tap-highlight-color: transparent; /* [FIX] iOS: Remove tap highlight */
   }
   body {
     @apply bg-background text-foreground;
     font-family: 'Work Sans', 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* [FIX] iOS safe-area insets */
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
   html {
     @apply font-sans;
     scroll-behavior: smooth;
+    /* [FIX] iOS momentum scrolling */
+    -webkit-overflow-scrolling: touch;
+    /* [FIX] iOS Safari viewport fix */
+    height: -webkit-fill-available;
   }
   h1, h2, h3, h4, h5, h6, .font-serif {
     font-family: 'Noto Serif', serif;
@@ -191,5 +200,21 @@
   .analog-scrollbar::-webkit-scrollbar-thumb {
     background: var(--bg-container-highest);
     border-radius: 3px;
+  }
+
+  /* [FIX] scrollbar-hide utility (used across mobile components) */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* [FIX] iOS Safari: prevent zoom on inputs */
+  @supports (-webkit-touch-callout: none) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
   }
 }

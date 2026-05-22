@@ -7,6 +7,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: 'cover', // [FIX] iPhone notch/safe-area support
 }
 
 export const metadata: Metadata = {
