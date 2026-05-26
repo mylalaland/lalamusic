@@ -11,6 +11,7 @@ import { analyzeMusicMetadata } from '@/app/actions/metadata'
 import { getExternalLyrics } from '@/app/actions/lyrics'
 import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
+import { WebAudioFallbackPlayer, needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
 import { AnimatePresence, motion } from 'framer-motion'
 
 const Icon = {
@@ -84,6 +85,7 @@ export default function DesktopPlayer() {
   const seekTimeRef = useRef<number>(0)
   const equalizerRef = useRef<Equalizer | null>(null)
   const retryCountRef = useRef(0)
+  const fallbackPlayerRef = useRef<WebAudioFallbackPlayer | null>(null)
 
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -93,6 +95,7 @@ export default function DesktopPlayer() {
   const [isShuffle, setIsShuffle] = useState(false)
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off')
   const [isSeeking, setIsSeeking] = useState(false)
+  const [isFallbackMode, setIsFallbackMode] = useState(false)
   const [metaLoading, setMetaLoading] = useState(false)
   const [localCoverArt, setLocalCoverArt] = useState<string | null>(null)
   const [lyricsLoading, setLyricsLoading] = useState(false)
@@ -102,6 +105,36 @@ export default function DesktopPlayer() {
   const [expandedView, setExpandedView] = useState<'art' | 'lyrics' | 'queue' | 'eq'>('lyrics')
   const [sleepTimer, setSleepTimer] = useState(0)
   const [lyricsFontSize, setLyricsFontSize] = useState(18) // px, 10~50 range, step 4
+
+  // [FIX] Cleanup fallback player
+  const cleanupFallback = () => {
+    if (fallbackPlayerRef.current) {
+      fallbackPlayerRef.current.destroy()
+      fallbackPlayerRef.current = null
+    }
+    setIsFallbackMode(false)
+  }
+
+  // [NEW] Start playback via Web Audio fallback (for iOS FLAC/OGG etc)
+  const startFallbackPlayback = async (url: string) => {
+    cleanupFallback()
+    const player = new WebAudioFallbackPlayer(
+      equalizerRef.current?.audioContext || undefined
+    )
+    fallbackPlayerRef.current = player
+    setIsFallbackMode(true)
+
+    player.onTimeUpdate = (t) => { if (!isSeeking) setCurrentTime(t) }
+    player.onDurationChange = (d) => setDuration(d)
+    player.onEnded = () => handleNextWrapped()
+
+    const ok = await player.loadAndDecode(url)
+    if (ok) {
+      player.setVolume(isMuted ? 0 : volume)
+      player.setPlaybackRate(playbackRate)
+      if (isPlaying) player.play()
+    }
+  }
 
   // ============================================================
   // 오디오 엔진 — 곡 변경 시 로드 + 재생
@@ -136,12 +169,23 @@ export default function DesktopPlayer() {
     }
     fetchMeta()
 
+    // Build stream URL
+    const newSrc = ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob')))
+      ? (track as any).src
+      : `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
+
+    // [NEW] Check if this format needs Web Audio fallback
+    if (needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)) {
+      console.log('[DesktopPlayer] Unsupported format detected, using Web Audio fallback')
+      startFallbackPlayback(newSrc)
+      return
+    }
+
+    // Standard <audio> playback path
+    cleanupFallback()
+
     // 오디오 소스설정
     if (audioRef.current) {
-      const newSrc = ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob')))
-        ? (track as any).src
-        : `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
-      
       if (audioRef.current.src.indexOf(track.id) === -1) {
         audioRef.current.crossOrigin = "anonymous"
         audioRef.current.src = newSrc
@@ -153,10 +197,19 @@ export default function DesktopPlayer() {
         // We do NOT call play() here synchronously. We wait for onCanPlay mapping!
       }
     }
+
+    return () => { cleanupFallback() }
   }, [track?.id])
 
   // 재생 상태 리스너 (강제 동기화)
   useEffect(() => {
+    // [NEW] Fallback mode sync
+    if (isFallbackMode && fallbackPlayerRef.current) {
+      if (isPlaying) fallbackPlayerRef.current.play()
+      else fallbackPlayerRef.current.pause()
+      return
+    }
+
     if (!audioRef.current) return
     if (isPlaying) {
       if (equalizerRef.current && equalizerRef.current.audioContext.state === 'suspended') {
@@ -168,7 +221,7 @@ export default function DesktopPlayer() {
     } else {
       audioRef.current.pause()
     }
-  }, [isPlaying, track?.id]) // Added track?.id so it acts on new track loads if isPlaying remains true
+  }, [isPlaying, track?.id, isFallbackMode]) // Added track?.id so it acts on new track loads if isPlaying remains true
 
   // EQ 초기화 — canplaythrough에서 안전하게 한번만 생성
   useEffect(() => {
@@ -339,7 +392,11 @@ export default function DesktopPlayer() {
     seekTimeRef.current = time
   }
   const handleSeekEnd = () => {
-    if (audioRef.current) audioRef.current.currentTime = seekTimeRef.current
+    if (isFallbackMode && fallbackPlayerRef.current) {
+      fallbackPlayerRef.current.seek(seekTimeRef.current)
+    } else if (audioRef.current) {
+      audioRef.current.currentTime = seekTimeRef.current
+    }
     setIsSeeking(false)
   }
 
@@ -382,6 +439,25 @@ export default function DesktopPlayer() {
 
   const handleAudioError = () => {
     if (!audioRef.current || !track) return
+    
+    // [NEW] If format is unsupported, try Web Audio fallback before retrying
+    if (retryCountRef.current === 0 && !isFallbackMode) {
+      const trackName = track.name || track.title || ''
+      const trackMime = track.mimeType || ''
+      const lowerName = trackName.toLowerCase()
+      const unsupported = lowerName.endsWith('.flac') || lowerName.endsWith('.ogg') || 
+        lowerName.endsWith('.opus') || lowerName.endsWith('.wma') ||
+        trackMime.includes('flac') || trackMime.includes('ogg') || 
+        trackMime.includes('opus') || trackMime.includes('wma')
+      
+      if (unsupported) {
+        console.log('[DesktopPlayer] <audio> error on unsupported format, switching to Web Audio fallback')
+        const url = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(trackMime)}&name=${encodeURIComponent(trackName)}`
+        startFallbackPlayback(url)
+        return
+      }
+    }
+
     if (retryCountRef.current < 3) {
       retryCountRef.current += 1
       audioRef.current.src = audioRef.current.src

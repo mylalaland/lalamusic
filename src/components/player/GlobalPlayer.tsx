@@ -6,6 +6,7 @@ import { analyzeMusicMetadata } from '@/app/actions/metadata'
 import { getExternalLyrics } from '@/app/actions/lyrics'
 import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
+import { WebAudioFallbackPlayer, needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
 import { 
   Play, Pause, SkipBack, SkipForward, ChevronDown, ListMusic, MoreHorizontal,
   Shuffle, Volume2, VolumeX, Mic2, Gauge, Repeat, Repeat1, Music, Moon, Settings2, Bookmark
@@ -39,9 +40,11 @@ export default function GlobalPlayer() {
   const equalizerRef = useRef<Equalizer | null>(null)
   const touchStartRef = useRef<{x: number, y: number} | null>(null)
   const retryCountRef = useRef(0)
+  const fallbackPlayerRef = useRef<WebAudioFallbackPlayer | null>(null)
   
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [isFallbackMode, setIsFallbackMode] = useState(false)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1.0)
@@ -243,6 +246,41 @@ export default function GlobalPlayer() {
     }
   }, [currentLyricIndex, viewMode])
 
+  // [FIX] Cleanup fallback player when switching tracks or unmounting
+  const cleanupFallback = () => {
+    if (fallbackPlayerRef.current) {
+      fallbackPlayerRef.current.destroy()
+      fallbackPlayerRef.current = null
+    }
+    setIsFallbackMode(false)
+  }
+
+  // [NEW] Start playback via Web Audio fallback (for iOS FLAC/OGG etc)
+  const startFallbackPlayback = async (url: string) => {
+    cleanupFallback()
+    
+    const player = new WebAudioFallbackPlayer(
+      equalizerRef.current?.audioContext || undefined
+    )
+    fallbackPlayerRef.current = player
+    setIsFallbackMode(true)
+
+    player.onTimeUpdate = (t) => {
+      if (!isSeeking) setCurrentTime(t)
+    }
+    player.onDurationChange = (d) => setDuration(d)
+    player.onEnded = () => handleNextWrapped()
+
+    const ok = await player.loadAndDecode(url)
+    if (ok) {
+      player.setVolume(isMuted ? 0 : volume)
+      player.setPlaybackRate(playbackRate)
+      if (isPlaying) player.play()
+    } else {
+      console.error('[WebAudioFallback] Failed to decode, giving up.')
+    }
+  }
+
   // 곡 변경 및 메타데이터 로딩
   useEffect(() => {
     if (!track) return
@@ -275,11 +313,22 @@ export default function GlobalPlayer() {
 
     fetchMetadata()
 
+    // Build stream URL
+    const newSrc = ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob')))
+      ? (track as any).src 
+      : `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
+
+    // [NEW] Check if this format needs Web Audio fallback (iOS FLAC/OGG/OPUS/WMA)
+    if (needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)) {
+      console.log('[GlobalPlayer] iOS unsupported format detected, using Web Audio fallback')
+      startFallbackPlayback(newSrc)
+      return
+    }
+
+    // Standard <audio> playback path
+    cleanupFallback()
+
     if (audioRef.current) {
-      const newSrc = ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob')))
-        ? (track as any).src 
-        : `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
-            
       if (audioRef.current.src.indexOf(track.id) === -1) {
         // [FIX] iOS Safari: crossOrigin must be set BEFORE src assignment
         audioRef.current.crossOrigin = "anonymous"
@@ -311,10 +360,22 @@ export default function GlobalPlayer() {
         }
       }
     }
+
+    return () => { cleanupFallback() }
   }, [track?.id])
 
   // 재생 상태 동기화
   useEffect(() => {
+    // [NEW] Fallback mode: sync play/pause with WebAudioFallbackPlayer
+    if (isFallbackMode && fallbackPlayerRef.current) {
+      if (isPlaying) {
+        fallbackPlayerRef.current.play()
+      } else {
+        fallbackPlayerRef.current.pause()
+      }
+      return
+    }
+
     if (!audioRef.current) return
     if (isPlaying) {
       // [FIX] iOS Safari: Always resume AudioContext before play
@@ -337,7 +398,7 @@ export default function GlobalPlayer() {
     } else {
       audioRef.current.pause()
     }
-  }, [isPlaying])
+  }, [isPlaying, isFallbackMode])
 
   // 볼륨 및 EQ
   useEffect(() => {
@@ -383,7 +444,11 @@ export default function GlobalPlayer() {
     seekTimeRef.current = time
   }
   const handleSeekEnd = () => {
-    if (audioRef.current) audioRef.current.currentTime = seekTimeRef.current
+    if (isFallbackMode && fallbackPlayerRef.current) {
+      fallbackPlayerRef.current.seek(seekTimeRef.current)
+    } else if (audioRef.current) {
+      audioRef.current.currentTime = seekTimeRef.current
+    }
     setIsSeeking(false)
   }
 
@@ -503,6 +568,26 @@ export default function GlobalPlayer() {
 
   const handleAudioError = () => {
     if (!audioRef.current || !track) return
+    
+    // [NEW] If format is unsupported, try Web Audio fallback before retrying
+    if (retryCountRef.current === 0 && !isFallbackMode) {
+      const trackName = track.name || track.title || ''
+      const trackMime = track.mimeType || ''
+      // Check if this might be a format issue (iOS doesn't give clear error codes)
+      const lowerName = trackName.toLowerCase()
+      const unsupported = lowerName.endsWith('.flac') || lowerName.endsWith('.ogg') || 
+        lowerName.endsWith('.opus') || lowerName.endsWith('.wma') ||
+        trackMime.includes('flac') || trackMime.includes('ogg') || 
+        trackMime.includes('opus') || trackMime.includes('wma')
+      
+      if (unsupported) {
+        console.log('[GlobalPlayer] <audio> error on unsupported format, switching to Web Audio fallback')
+        const url = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(trackMime)}&name=${encodeURIComponent(trackName)}`
+        startFallbackPlayback(url)
+        return
+      }
+    }
+
     if (retryCountRef.current < 3) {
       retryCountRef.current += 1
       const currentSrc = audioRef.current.src

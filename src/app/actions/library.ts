@@ -652,3 +652,92 @@ export async function getRandomAudioFilesFromFolders(folderIds: string[], allowe
     return []
   }
 }
+
+// [NEW] 재귀 검색: 현재 폴더의 모든 하위 폴더를 BFS로 탐색하며 오디오 파일 검색
+// searchQuery가 있으면 파일명 필터링, 없으면 전체 오디오 파일 반환
+export async function searchAudioFilesRecursive(
+  folderId: string,
+  searchQuery: string = '',
+  allowedExtensions: string[] = [],
+  limit: number = 3000
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const accessToken = await getValidGoogleToken(user.id)
+  const auth = new google.auth.OAuth2()
+  auth.setCredentials({ access_token: accessToken })
+  const drive = google.drive({ version: 'v3', auth })
+
+  try {
+    // 1단계: BFS로 모든 하위 폴더 ID 수집 (최대 5레벨 깊이)
+    const allFolderIds: string[] = [folderId]
+    let queue = [folderId]
+    let depth = 0
+    const MAX_DEPTH = 5
+
+    while (queue.length > 0 && depth < MAX_DEPTH) {
+      const parentQueries = queue.map(id => `'${id}' in parents`).join(' or ')
+      const folderRes = await drive.files.list({
+        q: `(${parentQueries}) and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+        fields: 'files(id)',
+        pageSize: 1000,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true
+      })
+
+      const subFolders = folderRes.data.files || []
+      if (subFolders.length === 0) break
+
+      const newIds = subFolders.map((f: any) => f.id as string)
+      allFolderIds.push(...newIds)
+      queue = newIds
+      depth++
+    }
+
+    // 2단계: 수집된 모든 폴더에서 오디오 파일 검색
+    // Google Drive API는 'in parents' 쿼리를 OR로 최대 ~100개까지만 지원하므로 청크로 나눠서 호출
+    const CHUNK_SIZE = 50
+    let allFiles: any[] = []
+
+    for (let i = 0; i < allFolderIds.length; i += CHUNK_SIZE) {
+      if (allFiles.length >= limit) break
+
+      const chunk = allFolderIds.slice(i, i + CHUNK_SIZE)
+      const parentQuery = chunk.map(id => `'${id}' in parents`).join(' or ')
+
+      let q = `(${parentQuery}) and trashed = false and mimeType != 'application/vnd.google-apps.folder'`
+
+      // 오디오 파일 필터
+      if (allowedExtensions.length > 0) {
+        const extQuery = allowedExtensions.map(ext => `name contains '.${ext}'`).join(' or ')
+        q += ` and (mimeType contains 'audio' or (${extQuery}))`
+      } else {
+        q += ` and (mimeType contains 'audio' or name contains '.mp3' or name contains '.flac' or name contains '.m4a' or name contains '.wav' or name contains '.aac' or name contains '.ogg')`
+      }
+
+      // 검색어 필터
+      if (searchQuery) {
+        const safeQuery = searchQuery.replace(/'/g, "\\'")
+        q += ` and name contains '${safeQuery}'`
+      }
+
+      const res = await drive.files.list({
+        q,
+        fields: 'files(id, name, mimeType, thumbnailLink, size, videoMediaMetadata)',
+        pageSize: Math.min(1000, limit - allFiles.length),
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true
+      })
+
+      const files = res.data.files || []
+      allFiles.push(...files)
+    }
+
+    return allFiles.slice(0, limit)
+  } catch (e: any) {
+    console.error('searchAudioFilesRecursive Error:', e)
+    return []
+  }
+}

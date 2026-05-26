@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { getScanSettings } from '@/app/actions/settings'
-import { getDriveContents } from '@/app/actions/library'
+import { getDriveContents, searchAudioFilesRecursive } from '@/app/actions/library'
 import { getPlaylists, addTrackToPlaylist } from '@/app/actions/playlist'
 import { analyzeMusicMetadata } from '@/app/actions/metadata'
 import { usePlayerStore, MusicFile } from '@/lib/store/usePlayerStore'
@@ -195,7 +195,10 @@ function LazyDuration({ fileId, durationMs }: { fileId: string, durationMs?: num
 
 /* ────── 페이지 ────── */
 export default function DesktopConnect() {
-  const { path, setPath, items, setItems, currentFolderId, setCurrentFolderId } = useConnectStore()
+  const { 
+    path, setPath, items, setItems, currentFolderId, setCurrentFolderId,
+    serverSort, setServerSort, filterBy, setFilterBy
+  } = useConnectStore()
   const { 
     setTrack, setPlaylist, playlist, currentTrack, isPlaying, togglePlay,
     favorites, toggleFavorite 
@@ -216,10 +219,12 @@ export default function DesktopConnect() {
   const [isAiSearching, setIsAiSearching] = useState(false)
   
   const { aiProvider, aiApiKeys } = useSettingsStore()
-  const [serverSort, setServerSort] = useState('name_asc') // name_asc, modified_desc, size_desc
-  const [filterBy, setFilterBy] = useState('all') // all, folders, files
   const [visibleCount, setVisibleCount] = useState(50)
   const [isInitialized, setIsInitialized] = useState(false)
+  // [NEW] Track last sort/filter to detect changes vs simple path changes
+  const prevSortRef = useRef(serverSort)
+  const prevFilterRef = useRef(filterBy)
+  const prevSearchRef = useRef(serverSearch)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const currentFolder = path.length > 0 ? path[path.length - 1] : { id: 'root', name: 'Google Drive' }
@@ -239,11 +244,31 @@ export default function DesktopConnect() {
     init()
   }, [])
 
+  // [MODIFIED] 폴더 변경 시 캐시 체크 — 같은 폴더면 스킵
   useEffect(() => {
-    if (isInitialized && path.length > 0) {
-        loadFolder(currentFolder.id)
-        setVisibleCount(50) // 페이지 전환 시 리셋
+    if (!isInitialized || path.length === 0) return
+
+    const sortChanged = prevSortRef.current !== serverSort
+    const filterChanged = prevFilterRef.current !== filterBy
+    const searchChanged = prevSearchRef.current !== serverSearch
+    prevSortRef.current = serverSort
+    prevFilterRef.current = filterBy
+    prevSearchRef.current = serverSearch
+
+    // 정렬/필터/검색이 변경됐으면 강제 리로드
+    if (sortChanged || filterChanged || searchChanged) {
+      loadFolder(currentFolder.id, true)
+      setVisibleCount(50)
+      return
     }
+
+    // [FIX] 같은 폴더의 캐시 데이터가 있으면 API 호출 스킵 (깜빡임 방지)
+    if (currentFolder.id === currentFolderId && items.length > 0) {
+      return
+    }
+
+    loadFolder(currentFolder.id)
+    setVisibleCount(50)
   }, [path, serverSearch, serverSort, filterBy, isInitialized])
 
   // Infinite scroll sentinel
@@ -263,7 +288,10 @@ export default function DesktopConnect() {
 
   const [error, setError] = useState<string | null>(null)
 
-  const loadFolder = async (folderId: string) => {
+  const loadFolder = async (folderId: string, forceReload: boolean = false) => {
+    // [FIX] 캐시된 데이터가 있으면 스킵 (깜빡임 방지)
+    if (!forceReload && folderId === currentFolderId && items.length > 0) return
+
     setLoading(true)
     setError(null)
     try {
@@ -292,9 +320,23 @@ export default function DesktopConnect() {
     setError(null)
     setLocalSearch('')
     try {
-      const { searchDriveWithAI } = await import('@/app/actions/ai')
-      const results = await searchDriveWithAI(currentFolder.id, aiSearchQuery, apiKey, aiProvider)
-      setItems(results)
+      // [MODIFIED] 하위 폴더 재귀 검색 + 3000곡 제한
+      const audioFiles = await searchAudioFilesRecursive(
+        currentFolder.id, '', allowedExts, 3000
+      )
+      
+      if (audioFiles.length === 0) {
+        setError('이 폴더와 하위 폴더에 음악 파일이 없습니다.')
+        return
+      }
+      
+      const { recommendMusic } = await import('@/app/actions/ai')
+      const result = await recommendMusic(aiSearchQuery, audioFiles, apiKey, aiProvider)
+      if (result.songs && result.songs.length > 0) {
+        setItems(result.songs)
+      } else {
+        setError('AI가 적절한 곡을 찾지 못했습니다.')
+      }
     } catch (e: any) {
       console.error('AI Search Error:', e)
       setError(e?.message || 'AI 검색 중 오류가 발생했습니다.')
