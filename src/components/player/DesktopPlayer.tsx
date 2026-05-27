@@ -280,7 +280,7 @@ export default function DesktopPlayer() {
       if (!equalizerRef.current && audio) {
         // Skip EQ for cross-origin streams (will cause silent output)
         const src = audio.src || ''
-        const isSameOrigin = src.startsWith('blob:') || src.startsWith('data:') || (src.startsWith(window.location.origin) && !src.includes('/api/stream'))
+        const isSameOrigin = src.startsWith('blob:') || src.startsWith('data:') || src.startsWith(window.location.origin)
         if (!isSameOrigin) {
           console.log('[DesktopPlayer] Skipping EQ for cross-origin stream (would cause silence)')
           // Ensure volume is controlled directly on the audio element
