@@ -154,9 +154,7 @@ export default function DesktopPlayer() {
   // [NEW] Start playback via Web Audio fallback (for iOS FLAC/OGG etc)
   const startFallbackPlayback = async (url: string) => {
     cleanupFallback()
-    const player = new WebAudioFallbackPlayer(
-      equalizerRef.current?.audioContext || undefined
-    )
+    const player = new WebAudioFallbackPlayer(undefined)
     fallbackPlayerRef.current = player
     setIsFallbackMode(true)
 
@@ -241,6 +239,11 @@ export default function DesktopPlayer() {
   useEffect(() => {
     // [NEW] Fallback mode sync
     if (isFallbackMode && fallbackPlayerRef.current) {
+      // @ts-ignore
+      const ctx = fallbackPlayerRef.current.audioContext
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {})
+      }
       if (isPlaying) fallbackPlayerRef.current.play()
       else fallbackPlayerRef.current.pause()
       return
@@ -283,6 +286,12 @@ export default function DesktopPlayer() {
   useEffect(() => {
     if (!audioRef.current) return
     const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
+    
+    // Fallback Player 볼륨 동기화
+    if (fallbackPlayerRef.current) {
+      fallbackPlayerRef.current.setVolume(effectiveVolume)
+    }
+
     if (equalizerRef.current) {
       equalizerRef.current.setVolume(effectiveVolume)
       audioRef.current.volume = 1
@@ -290,7 +299,7 @@ export default function DesktopPlayer() {
       audioRef.current.volume = effectiveVolume
     }
     audioRef.current.playbackRate = playbackRate
-  }, [volume, isMuted, playbackRate])
+  }, [volume, isMuted, playbackRate, isFallbackMode])
 
   useEffect(() => {
     if (equalizerRef.current) {
