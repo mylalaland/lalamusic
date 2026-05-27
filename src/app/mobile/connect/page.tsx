@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { recommendMusic } from '@/app/actions/ai'
 import { getScanSettings } from '@/app/actions/settings'
 import { getDriveContents, searchAudioFilesRecursive } from '@/app/actions/library'
@@ -102,7 +102,7 @@ export default function ConnectPage() {
   // ================================================================
   // 폴더 로드 (API 호출)
   // ================================================================
-  const loadFolder = useCallback(async (folderId: string) => {
+  const loadFolder = async (folderId: string) => {
     setLoading(true)
     setIsAiFiltered(false)
     setErrorMsg(null)
@@ -113,16 +113,18 @@ export default function ConnectPage() {
       setItems(combined)
       setOriginalItems(combined)
       setCurrentFolderId(folderId)
-      setCacheForFolder(folderId, combined) // 캐시 저장
+      setCacheForFolder(folderId, combined)
     } catch (e: any) {
       setErrorMsg(e?.message || '폴더 로딩 실패')
     } finally {
       setLoading(false)
     }
-  }, [cachedAllowedExts, serverSort, filterBy])
+  }
 
-  // 정렬/필터 변경 시 → 현재 폴더 강제 리로드 (캐시 자동 초기화됨 by store)
+  // 정렬/필터 변경 시 → 현재 폴더 강제 리로드
+  const isFirstMount = useRef(true)
   useEffect(() => {
+    if (isFirstMount.current) { isFirstMount.current = false; return }
     if (!settingsLoaded || !currentFolderId) return
     loadFolder(currentFolder.id)
   }, [serverSort, filterBy])
@@ -235,11 +237,10 @@ export default function ConnectPage() {
 
   const resetFilter = () => { loadFolder(currentFolder.id) }
 
-  // 오프라인 다운로드
+  // 오프라인 다운로드 (확인 없이 바로 저장)
   const handleDownload = async (e: React.MouseEvent, item: any) => {
     e.preventDefault(); e.stopPropagation()
     if (downloadingId) return
-    if (!confirm(`'${item.name}'을(를) 오프라인 저장?`)) return
     setDownloadingId(item.id); setDownloadProgress(0)
     try {
       let metadata: any = { lyrics: null, cover_art: null }
@@ -260,8 +261,7 @@ export default function ConnectPage() {
         if (contentLength) setDownloadProgress((received / contentLength) * 100)
       }
       await saveToOffline(item, new Blob(chunks), metadata)
-      alert('저장 완료!')
-    } catch { alert('다운로드 실패') }
+    } catch {}
     finally { setDownloadingId(null); setDownloadProgress(0) }
   }
 
@@ -449,7 +449,8 @@ export default function ConnectPage() {
       {showSortSheet && (
         <>
           <div className="fixed inset-0 bg-black/40 z-40 animate-in fade-in" onClick={() => setShowSortSheet(false)} onTouchStart={e => e.stopPropagation()} />
-          <div className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--bg-surface)] border-t border-[var(--border-strong)] rounded-t-2xl animate-in slide-in-from-bottom pb-[env(safe-area-inset-bottom)]"
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--bg-surface)] border-t border-[var(--border-strong)] rounded-t-2xl animate-in slide-in-from-bottom max-h-[70vh] overflow-y-auto"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
             onTouchStart={e => e.stopPropagation()}>
             <div className="w-10 h-1 bg-[var(--text-muted)]/30 rounded-full mx-auto mt-3 mb-4" />
             

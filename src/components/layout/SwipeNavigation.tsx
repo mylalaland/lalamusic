@@ -27,34 +27,24 @@ export default function SwipeNavigation({ children }: { children: React.ReactNod
     const diffX = touchStart.current.x - touchEnd.x
     const diffY = touchStart.current.y - touchEnd.y
 
-    // 가로 스와이프 감지 (세로보다 가로 움직임이 크고, 최소 80px 이상)
+    // 가로 스와이프 감지 (세로보다 가로 움직임이 크고, 최소 80px)
     if (Math.abs(diffX) > 80 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
       const isConnect = pathname.startsWith('/connect') || pathname.startsWith('/mobile/connect')
       
-      // [FIX] Connect 페이지에서는 스와이프 = 폴더 뒤로가기
-      if (isConnect && path.length > 1) {
-        if (diffX < 0) {
-          // 왼쪽에서 오른쪽 스와이프 (←) = 이전 폴더로
+      // Connect 페이지: 스와이프 = 폴더 뒤로가기 (iOS 기본 동작처럼)
+      // 왼쪽←오른쪽 스와이프(뒤로) + 오른쪽→왼쪽 스와이프는 무시
+      if (isConnect) {
+        if (diffX < 0 && path.length > 1) {
+          // ← 뒤로 스와이프: 이전 폴더로
           popPath()
         }
-        // 오른쪽에서 왼쪽 스와이프 (→)는 Connect에서 무시
+        // → 앞으로 스와이프: Connect에서는 무시 (iOS에서도 forward는 기본적으로 없음)
         touchStart.current = null
         return
       }
 
-      // 다른 페이지에서는 탭 전환
-      const currentIndex = TABS.findIndex(tab => pathname.startsWith(tab) || pathname.startsWith('/mobile' + tab))
-      if (currentIndex === -1) { touchStart.current = null; return }
-
-      if (diffX > 0) {
-        // 오른쪽에서 왼쪽 (→) = Next Tab
-        const nextIndex = (currentIndex + 1) % TABS.length
-        router.push(TABS[nextIndex])
-      } else {
-        // 왼쪽에서 오른쪽 (←) = Prev Tab
-        const prevIndex = (currentIndex - 1 + TABS.length) % TABS.length
-        router.push(TABS[prevIndex])
-      }
+      // 다른 페이지: 기본 iOS 뒤로가기만 (탭 전환 안 함)
+      // iOS 앱 표준: 왼→오 스와이프 = 뒤로가기 (브라우저 기본 동작에 맡김)
     }
     touchStart.current = null
   }

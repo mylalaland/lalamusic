@@ -253,7 +253,9 @@ export default function DesktopConnect() {
   }, [path, settingsLoaded])
 
   // 정렬/필터 변경 시 강제 리로드
+  const isFirstMount = useRef(true)
   useEffect(() => {
+    if (isFirstMount.current) { isFirstMount.current = false; return }
     if (!settingsLoaded || !currentFolderId) return
     loadFolder(currentFolder.id, true)
     setVisibleCount(50)

@@ -6,14 +6,16 @@ export type AIProvider = 'gemini' | 'openai' | 'claude'
 // 각 프로바이더별 사용 가능 모델
 export const AI_MODELS: Record<AIProvider, { id: string, label: string }[]> = {
   gemini: [
-    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (추천)' },
+    { id: 'gemini-2.5-flash-preview-05-20', label: 'Gemini 2.5 Flash (최신, 추천)' },
+    { id: 'gemini-2.5-pro-preview-05-06', label: 'Gemini 2.5 Pro' },
+    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
     { id: 'gemini-1.5-flash-latest', label: 'Gemini 1.5 Flash' },
-    { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
   ],
   openai: [
     { id: 'gpt-4o-mini', label: 'GPT-4o Mini (추천)' },
     { id: 'gpt-4o', label: 'GPT-4o' },
-    { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+    { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+    { id: 'gpt-4.1', label: 'GPT-4.1' },
   ],
   claude: [
     { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (추천)' },
@@ -24,7 +26,7 @@ export const AI_MODELS: Record<AIProvider, { id: string, label: string }[]> = {
 interface SettingsState {
   aiProvider: AIProvider
   aiApiKeys: Record<AIProvider, string>
-  aiModels: Record<AIProvider, string>   // [NEW] 프로바이더별 모델 선택
+  aiModels: Record<AIProvider, string>
   enableVisualizer: boolean
   autoPlayNext: boolean
   highQualityAudio: boolean
@@ -33,7 +35,7 @@ interface SettingsState {
   
   setAiProvider: (provider: AIProvider) => void
   setAiApiKey: (provider: AIProvider, key: string) => void
-  setAiModel: (provider: AIProvider, model: string) => void   // [NEW]
+  setAiModel: (provider: AIProvider, model: string) => void
   setEnableVisualizer: (enable: boolean) => void
   setAutoPlayNext: (enable: boolean) => void
   setHighQualityAudio: (enable: boolean) => void
@@ -51,7 +53,7 @@ export const useSettingsStore = create<SettingsState>()(
         claude: ''
       },
       aiModels: {
-        gemini: 'gemini-2.0-flash',
+        gemini: 'gemini-2.5-flash-preview-05-20',
         openai: 'gpt-4o-mini',
         claude: 'claude-sonnet-4-20250514'
       },
