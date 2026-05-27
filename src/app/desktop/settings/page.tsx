@@ -7,7 +7,7 @@ import {
   Settings as SettingsIcon, LogOut, Disc3,
   User, ChevronRight, Palette, Wand2, Key, Zap,
   MapPin, FolderSearch, Folder, FileAudio, CheckSquare, Square,
-  Mic2, ArrowUp, ArrowDown, Database, Trash2, RefreshCw, ListMusic, Save
+  Mic2, ArrowUp, ArrowDown, Database, Trash2, RefreshCw, ListMusic, Save, Search, CheckCircle2
 } from 'lucide-react'
 import { useSettingsStore, type AIProvider, AI_MODELS } from '@/lib/store/useSettingsStore'
 import {
@@ -184,9 +184,9 @@ export default function DesktopSettings() {
   const tabs = [
     { id: 'general', label: 'APP_PREFERENCES', icon: SettingsIcon },
     { id: 'drive', label: 'DRIVE_CONFIG', icon: MapPin },
-    { id: 'account', label: 'ACCOUNT', icon: User },
     { id: 'ai', label: 'AI_CONFIG', icon: Wand2 },
     { id: 'appearance', label: 'PERSONALIZATION', icon: Palette },
+    { id: 'account', label: 'ACCOUNT', icon: User },
     { id: 'about', label: 'SYSTEM_INFO', icon: Disc3 },
   ]
 
@@ -359,6 +359,7 @@ export default function DesktopSettings() {
             <div>
               <h2 className="font-['Work_Sans'] text-lg font-bold text-[var(--text-main)] mb-6 tracking-tight">AI_CONFIGURATION</h2>
               <div className="p-6 space-y-6" style={{ border: '1px solid var(--bg-container-high)' }}>
+                {/* 1. Provider Selection */}
                 <div>
                   <label className="font-['Work_Sans'] text-[9px] text-[var(--tertiary)] tracking-[0.3em] uppercase block mb-3">SELECT_PROVIDER</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -372,51 +373,7 @@ export default function DesktopSettings() {
                   </div>
                 </div>
 
-                {/* [NEW] Model Selection — 동적 조회 */}
-                <div>
-                  <label className="font-['Work_Sans'] text-[9px] text-[var(--tertiary)] tracking-[0.3em] uppercase block mb-3">SELECT_MODEL</label>
-                  <div className="flex flex-col gap-2 mb-2">
-                    <select 
-                      value={aiModels[aiProvider]} 
-                      onChange={(e) => setAiModel(aiProvider, e.target.value)}
-                      className="w-full py-2.5 px-3 font-['Work_Sans'] text-sm text-[var(--text-main)] outline-none border border-[var(--border-strong)] focus:border-[var(--tertiary)] transition"
-                      style={{ background: 'var(--bg-container-high)', border: '1px solid var(--border-strong)' }}>
-                      {(fetchedModels.length > 0 ? fetchedModels : AI_MODELS[aiProvider] || []).map(m => (
-                        <option key={m.id} value={m.id} className="bg-[var(--bg-surface)] text-[var(--text-main)]">{m.label}</option>
-                      ))}
-                    </select>
-                    <button 
-                      onClick={async () => {
-                        const key = apiKeyInput || aiApiKeys[aiProvider]
-                        if (!key) { flashSave('API Key를 먼저 입력하세요'); return }
-                        setIsFetchingModels(true)
-                        try {
-                          const { fetchAvailableModels } = await import('@/app/actions/ai')
-                          const models = await fetchAvailableModels(key, aiProvider)
-                          if (models.length > 0) {
-                            setFetchedModels(models)
-                            flashSave(`${models.length}개 모델 발견!`)
-                          } else {
-                            flashSave('사용 가능한 모델이 없습니다')
-                          }
-                        } catch (e: any) {
-                          flashSave(`모델 조회 실패: ${e?.message || '오류'}`)
-                        } finally {
-                          setIsFetchingModels(false)
-                        }
-                      }}
-                      disabled={isFetchingModels}
-                      className="w-full py-2.5 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--tertiary)] border border-[var(--tertiary)]/30 hover:bg-[var(--tertiary)]/10 transition disabled:opacity-50">
-                      {isFetchingModels ? '조회중...' : '🔍 FETCH AVAILABLE MODELS'}
-                    </button>
-                  </div>
-                  {fetchedModels.length > 0 && (
-                    <p className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)]">
-                      ✨ API에서 {fetchedModels.length}개 모델이 조회되었습니다.
-                    </p>
-                  )}
-                </div>
-
+                {/* 2. API Key + Fetch Button */}
                 <div>
                   <label className="font-['Work_Sans'] text-[9px] text-[var(--tertiary)] tracking-[0.3em] uppercase block mb-3">API_KEY</label>
                   <div className="flex gap-2 mb-3">
@@ -426,30 +383,133 @@ export default function DesktopSettings() {
                         className="w-full py-2.5 pl-9 pr-4 font-['Work_Sans'] text-sm text-[var(--text-main)] placeholder:text-[var(--text-muted)] outline-none"
                         style={{ background: 'var(--bg-container-high)', border: '1px solid var(--bg-container-high)' }} />
                     </div>
-                    <button onClick={handleSaveAndAutoTest}
-                      className="px-5 py-2.5 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--on-primary)] transition-all min-w-[80px]"
-                      style={{ background: 'var(--primary)' }}>SAVE</button>
+                    <button 
+                      onClick={async () => {
+                        const key = apiKeyInput.trim()
+                        if (!key) { flashSave('API Key를 입력해주세요.'); return }
+                        setAiApiKey(aiProvider, key)
+                        setIsFetchingModels(true)
+                        flashSave('🔑 키 저장 완료! 모델 조회 중...')
+                        try {
+                          const { fetchAvailableModels } = await import('@/app/actions/ai')
+                          const models = await fetchAvailableModels(key, aiProvider)
+                          if (models && models.length > 0) {
+                            setFetchedModels(models)
+                            const defaultModel = models[0].id
+                            setAiModel(aiProvider, defaultModel)
+                            flashSave(`✨ ${models.length}개 모델 발견!`)
+                          } else {
+                            setFetchedModels([])
+                            flashSave('❌ 사용 가능한 모델이 없습니다')
+                          }
+                        } catch (e: any) {
+                          flashSave(`❌ ${e?.message || '모델 조회 실패'}`)
+                        } finally {
+                          setIsFetchingModels(false)
+                        }
+                      }}
+                      disabled={isFetchingModels}
+                      className="px-5 py-2.5 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--on-primary)] transition-all min-w-[100px] flex items-center justify-center gap-2 disabled:opacity-60"
+                      style={{ background: 'var(--primary)' }}>
+                      <Search size={14} />
+                      {isFetchingModels ? 'FETCHING...' : 'FETCH'}
+                    </button>
                   </div>
-
-                  <button 
-                    onClick={async () => {
-                      const key = apiKeyInput || aiApiKeys[aiProvider]
-                      if (!key) { flashSave('API Key를 먼저 입력하세요'); return }
-                      flashSave('테스트 중...')
-                      try {
-                        const { testAIConnection } = await import('@/app/actions/ai')
-                        const result = await testAIConnection(key, aiProvider, aiModels[aiProvider])
-                        flashSave(result.success ? `✅ ${result.message}` : `❌ ${result.message}`)
-                      } catch (e: any) {
-                        flashSave(`❌ ${e?.message || '테스트 실패'}`)
-                      }
-                    }}
-                    className="w-full py-2.5 mb-3 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--tertiary)] border border-[var(--tertiary)]/30 hover:bg-[var(--tertiary)]/10 transition flex items-center justify-center gap-2">
-                    <Zap size={14} /> TEST_CONNECTION
-                  </button>
-
-                  <div className="mt-3 flex items-start gap-2"><span className="text-[10px] mt-0.5">🔒</span><p className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)] leading-relaxed">API 키는 브라우저 로컬 저장소에만 보관되며, 서버에 저장되지 않습니다.</p></div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-[10px] mt-0.5">🔒</span>
+                    <p className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)] leading-relaxed">API 키는 브라우저 로컬 저장소에만 보관되며, 서버에 저장되지 않습니다.</p>
+                  </div>
                 </div>
+
+                {/* 3. Model List (appears after fetch) */}
+                <div>
+                  <label className="font-['Work_Sans'] text-[9px] text-[var(--tertiary)] tracking-[0.3em] uppercase block mb-3">AVAILABLE_MODELS</label>
+                  {fetchedModels.length > 0 ? (
+                    <div className="space-y-1.5 max-h-[300px] overflow-y-auto mb-3" style={{ scrollbarWidth: 'thin' }}>
+                      {fetchedModels.map(m => {
+                        const isSelected = aiModels[aiProvider] === m.id
+                        const lowerId = m.id.toLowerCase()
+                        const isRecommended = lowerId.includes('gemini') && (
+                          lowerId.includes('flash') ||
+                          lowerId.includes('latest') ||
+                          lowerId.includes('3.5')
+                        )
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => setAiModel(aiProvider, m.id)}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all border ${
+                              isSelected 
+                                ? 'border-[var(--tertiary)] bg-[var(--tertiary)]/10 text-[var(--text-main)]' 
+                                : 'border-[var(--border-strong)] hover:border-[var(--tertiary)]/50 text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                            }`}
+                          >
+                            <div className={`w-4 h-4 border-2 rounded-full flex items-center justify-center shrink-0 transition ${
+                              isSelected ? 'border-[var(--tertiary)]' : 'border-[var(--border-strong)]'
+                            }`}>
+                              {isSelected && <div className="w-2 h-2 rounded-full bg-[var(--tertiary)]" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-['Work_Sans'] text-sm font-medium truncate">{m.label || m.id}</span>
+                                {isRecommended && (
+                                  <span className="shrink-0 text-[8px] font-['Work_Sans'] font-bold tracking-wider text-[var(--on-primary)] px-2 py-0.5 bg-[var(--tertiary)]">
+                                    ⭐ RECOMMENDED
+                                  </span>
+                                )}
+                              </div>
+                              <span className="font-['Work_Sans'] text-[10px] text-[var(--text-muted)] truncate block">{m.id}</span>
+                            </div>
+                            {isSelected && <CheckCircle2 size={16} className="text-[var(--tertiary)] shrink-0" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2 mb-3">
+                      <select 
+                        value={aiModels[aiProvider]} 
+                        onChange={(e) => setAiModel(aiProvider, e.target.value)}
+                        className="w-full py-2.5 px-3 font-['Work_Sans'] text-sm text-[var(--text-main)] outline-none border border-[var(--border-strong)] focus:border-[var(--tertiary)] transition"
+                        style={{ background: 'var(--bg-container-high)', border: '1px solid var(--border-strong)' }}>
+                        {(AI_MODELS[aiProvider] || []).map(m => (
+                          <option key={m.id} value={m.id} className="bg-[var(--bg-surface)] text-[var(--text-main)]">{m.label}</option>
+                        ))}
+                      </select>
+                      <p className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)]">
+                        💡 API Key를 입력하고 FETCH 버튼을 눌러 사용 가능한 모델을 조회하세요.
+                      </p>
+                    </div>
+                  )}
+                  {fetchedModels.length > 0 && (
+                    <p className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)] mb-2">
+                      ✨ API에서 {fetchedModels.length}개 모델이 조회되었습니다.
+                    </p>
+                  )}
+                </div>
+
+                {/* 4. Test Connection Button */}
+                <button 
+                  onClick={async () => {
+                    const key = apiKeyInput || aiApiKeys[aiProvider]
+                    if (!key) { flashSave('API Key를 먼저 입력하세요'); return }
+                    flashSave('테스트 중...')
+                    try {
+                      const { testAIConnection } = await import('@/app/actions/ai')
+                      const result = await testAIConnection(key, aiProvider, aiModels[aiProvider])
+                      if (result.success) {
+                        flashSave(`✅ ${result.message}`)
+                      } else {
+                        alert(`❌ AI 연결 테스트 실패\n\n[오류 설명]: ${result.message}\n\nAPI 키가 정확한지, 혹은 무료 할당량이 남아있는지 확인해주세요.`)
+                      }
+                    } catch (e: any) {
+                      flashSave(`❌ ${e?.message || '테스트 실패'}`)
+                    }
+                  }}
+                  className="w-full py-3 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--on-primary)] transition-all flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.99]"
+                  style={{ background: 'linear-gradient(135deg, var(--primary), var(--tertiary))' }}>
+                  <Zap size={14} /> TEST_CONNECTION
+                </button>
               </div>
             </div>
           )}

@@ -221,7 +221,15 @@ export default function DesktopPlayer() {
     // 오디오 소스설정
     if (audioRef.current) {
       if (audioRef.current.src.indexOf(track.id) === -1) {
-        audioRef.current.crossOrigin = "anonymous"
+        // [FIX] Do NOT set crossOrigin="anonymous" for redirected Google Drive streams.
+        // createMediaElementSource() treats cross-origin audio as tainted → silent output.
+        // Only set crossOrigin for blob/local sources.
+        const isSameOrigin = newSrc.startsWith('blob:') || newSrc.startsWith('data:')
+        if (isSameOrigin) {
+          audioRef.current.crossOrigin = "anonymous"
+        } else {
+          audioRef.current.removeAttribute('crossorigin')
+        }
         audioRef.current.src = newSrc
         audioRef.current.playbackRate = playbackRate
         audioRef.current.volume = isMuted ? 0 : volume
@@ -263,11 +271,23 @@ export default function DesktopPlayer() {
   }, [isPlaying, track?.id, isFallbackMode]) // Added track?.id so it acts on new track loads if isPlaying remains true
 
   // EQ 초기화 — canplaythrough에서 안전하게 한번만 생성
+  // [FIX] For cross-origin streams (Google Drive redirect), createMediaElementSource
+  // produces silence (CORS tainted). Only init EQ for same-origin/blob sources.
   useEffect(() => {
     if (!audioRef.current) return
     const audio = audioRef.current
     const initEQ = () => {
       if (!equalizerRef.current && audio) {
+        // Skip EQ for cross-origin streams (will cause silent output)
+        const src = audio.src || ''
+        const isSameOrigin = src.startsWith('blob:') || src.startsWith('data:') || (src.startsWith(window.location.origin) && !src.includes('/api/stream'))
+        if (!isSameOrigin) {
+          console.log('[DesktopPlayer] Skipping EQ for cross-origin stream (would cause silence)')
+          // Ensure volume is controlled directly on the audio element
+          const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
+          audio.volume = effectiveVolume
+          return
+        }
         try {
           equalizerRef.current = new Equalizer(audio)
           // 현재 EQ gains 적용
@@ -275,7 +295,13 @@ export default function DesktopPlayer() {
           const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
           equalizerRef.current.setVolume(effectiveVolume)
           audio.volume = 1
-        } catch(e) { console.warn('EQ init failed:', e) }
+        } catch(e) {
+          console.warn('EQ init failed (CORS?), falling back to direct audio:', e)
+          // If EQ init failed, ensure audio still plays directly
+          const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
+          audio.volume = effectiveVolume
+          equalizerRef.current = null
+        }
       }
     }
     audio.addEventListener('canplaythrough', initEQ, { once: true })
