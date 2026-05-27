@@ -193,7 +193,7 @@ export default function ConnectPage() {
     if (!searchQuery.trim()) return
     setIsSearching(true); setErrorMsg(null)
     try {
-      const results = await searchAudioFilesRecursive(currentFolder.id, searchQuery.trim(), cachedAllowedExts, 3000)
+      const results = await searchAudioFilesRecursive(currentFolder.id, searchQuery.trim(), cachedAllowedExts, 0)
       if (results.length > 0) {
         setItems(results); setIsAiFiltered(true)
         setSearchMode(false); setSearchQuery('')

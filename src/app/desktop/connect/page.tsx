@@ -284,11 +284,19 @@ export default function DesktopConnect() {
     setLoading(true)
     setError(null)
     try {
-      const { folders, files } = await getDriveContents(folderId, cachedAllowedExts, serverSearch, serverSort, filterBy)
-      const combined = [...folders, ...files]
-      setItems(combined)
-      setCurrentFolderId(folderId)
-      setCacheForFolder(folderId, combined)
+      if (serverSearch.trim()) {
+        // 일반 검색어 존재 시 -> 제한 없이 하위 폴더 전체 재귀 검색
+        const files = await searchAudioFilesRecursive(folderId, serverSearch.trim(), cachedAllowedExts, 0)
+        setItems(files)
+        setCurrentFolderId(folderId)
+      } else {
+        // 일반 로드
+        const { folders, files } = await getDriveContents(folderId, cachedAllowedExts, '', serverSort, filterBy)
+        const combined = [...folders, ...files]
+        setItems(combined)
+        setCurrentFolderId(folderId)
+        setCacheForFolder(folderId, combined)
+      }
     } catch (e: any) {
       console.error('loadFolder error:', e)
       setError(e?.message || '폴더를 불러오는 중 오류가 발생했습니다.')

@@ -67,6 +67,73 @@ async function generateAIResponse(
 }
 
 // ====================================================================
+// 사용 가능한 모델 조회
+// ====================================================================
+export async function fetchAvailableModels(
+  apiKey: string,
+  provider: string = 'gemini'
+): Promise<{ id: string, label: string }[]> {
+  if (!apiKey) return []
+
+  try {
+    if (provider === 'gemini') {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}&pageSize=100`
+      )
+      if (!res.ok) throw new Error(`API Error: ${res.status}`)
+      const data = await res.json()
+      const models = (data.models || [])
+        .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+        .map((m: any) => ({
+          id: m.name.replace('models/', ''),
+          label: m.displayName || m.name.replace('models/', '')
+        }))
+        .sort((a: any, b: any) => {
+          // 최신 모델 먼저 (flash, pro 순)
+          const score = (id: string) => {
+            if (id.includes('3.5') && id.includes('flash')) return -2
+            if (id.includes('3.5') && id.includes('pro')) return -1
+            if (id.includes('2.5') && id.includes('flash')) return 0
+            if (id.includes('2.5') && id.includes('pro')) return 1
+            if (id.includes('2.0') && id.includes('flash')) return 2
+            if (id.includes('1.5') && id.includes('flash')) return 3
+            if (id.includes('1.5') && id.includes('pro')) return 4
+            return 10
+          }
+          return score(a.id) - score(b.id)
+        })
+      return models
+    }
+
+    if (provider === 'openai') {
+      const res = await fetch('https://api.openai.com/v1/models', {
+        headers: { 'Authorization': `Bearer ${apiKey}` }
+      })
+      if (!res.ok) throw new Error(`API Error: ${res.status}`)
+      const data = await res.json()
+      const models = (data.data || [])
+        .filter((m: any) => m.id.startsWith('gpt-'))
+        .map((m: any) => ({ id: m.id, label: m.id }))
+        .sort((a: any, b: any) => a.id.localeCompare(b.id))
+      return models
+    }
+
+    if (provider === 'claude') {
+      // Anthropic doesn't have a public list models API
+      return [
+        { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
+        { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
+        { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+      ]
+    }
+    return []
+  } catch (e: any) {
+    console.error('fetchAvailableModels Error:', e)
+    return []
+  }
+}
+
+// ====================================================================
 // API 키 연결 테스트
 // ====================================================================
 export async function testAIConnection(

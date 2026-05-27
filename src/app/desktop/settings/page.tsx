@@ -9,7 +9,7 @@ import {
   MapPin, FolderSearch, Folder, FileAudio, CheckSquare, Square,
   Mic2, ArrowUp, ArrowDown, Database, Trash2, RefreshCw, ListMusic, Save
 } from 'lucide-react'
-import { useSettingsStore, type AIProvider } from '@/lib/store/useSettingsStore'
+import { useSettingsStore, type AIProvider, AI_MODELS } from '@/lib/store/useSettingsStore'
 import {
   getScanSettings, saveScanSettings, saveBaseSettings, resetScanSettings,
   saveExtensionSettings, resetMusicLibrary, resetPlaylists
@@ -24,11 +24,13 @@ export default function DesktopSettings() {
   const [activeTab, setActiveTab] = useState('general')
 
   const { 
-    aiProvider, aiApiKeys, setAiProvider, setAiApiKey,
+    aiProvider, aiApiKeys, aiModels, setAiProvider, setAiApiKey, setAiModel,
     autoPlayNext, highQualityAudio, themeColor, showLyrics,
     setAutoPlayNext, setHighQualityAudio, setThemeColor, setShowLyrics
   } = useSettingsStore()
   const [apiKeyInput, setApiKeyInput] = useState('')
+  const [fetchedModels, setFetchedModels] = useState<{id: string, label: string}[]>([])
+  const [isFetchingModels, setIsFetchingModels] = useState(false)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
 
   // [NEW] Drive config state (from mobile)
@@ -50,7 +52,10 @@ export default function DesktopSettings() {
     order: ['synced', 'alsong', 'lrclib', 'unsynced']
   })
 
-  useEffect(() => { setApiKeyInput(aiApiKeys[aiProvider] || '') }, [aiProvider, aiApiKeys])
+  useEffect(() => { 
+    setApiKeyInput(aiApiKeys[aiProvider] || '') 
+    setFetchedModels([])
+  }, [aiProvider, aiApiKeys])
 
   useEffect(() => {
     const supabase = createClient()
@@ -322,9 +327,55 @@ export default function DesktopSettings() {
                     ))}
                   </div>
                 </div>
+
+                {/* [NEW] Model Selection — 동적 조회 */}
+                <div>
+                  <label className="font-['Work_Sans'] text-[9px] text-[var(--tertiary)] tracking-[0.3em] uppercase block mb-3">SELECT_MODEL</label>
+                  <div className="flex gap-2 mb-2">
+                    <select 
+                      value={aiModels[aiProvider]} 
+                      onChange={(e) => setAiModel(aiProvider, e.target.value)}
+                      className="flex-1 py-2.5 px-3 font-['Work_Sans'] text-sm text-[var(--text-main)] outline-none border border-[var(--border-strong)] focus:border-[var(--tertiary)] transition"
+                      style={{ background: 'var(--bg-container-high)', border: '1px solid var(--border-strong)' }}>
+                      {(fetchedModels.length > 0 ? fetchedModels : AI_MODELS[aiProvider] || []).map(m => (
+                        <option key={m.id} value={m.id} className="bg-[var(--bg-surface)] text-[var(--text-main)]">{m.label}</option>
+                      ))}
+                    </select>
+                    <button 
+                      onClick={async () => {
+                        const key = apiKeyInput || aiApiKeys[aiProvider]
+                        if (!key) { flashSave('API Key를 먼저 입력하세요'); return }
+                        setIsFetchingModels(true)
+                        try {
+                          const { fetchAvailableModels } = await import('@/app/actions/ai')
+                          const models = await fetchAvailableModels(key, aiProvider)
+                          if (models.length > 0) {
+                            setFetchedModels(models)
+                            flashSave(`${models.length}개 모델 발견!`)
+                          } else {
+                            flashSave('사용 가능한 모델이 없습니다')
+                          }
+                        } catch (e: any) {
+                          flashSave(`모델 조회 실패: ${e?.message || '오류'}`)
+                        } finally {
+                          setIsFetchingModels(false)
+                        }
+                      }}
+                      disabled={isFetchingModels}
+                      className="px-4 py-2.5 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--tertiary)] border border-[var(--tertiary)]/30 hover:bg-[var(--tertiary)]/10 transition whitespace-nowrap disabled:opacity-50">
+                      {isFetchingModels ? '조회중...' : '🔍 FETCH'}
+                    </button>
+                  </div>
+                  {fetchedModels.length > 0 && (
+                    <p className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)]">
+                      ✨ API에서 {fetchedModels.length}개 모델이 조회되었습니다.
+                    </p>
+                  )}
+                </div>
+
                 <div>
                   <label className="font-['Work_Sans'] text-[9px] text-[var(--tertiary)] tracking-[0.3em] uppercase block mb-3">API_KEY</label>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mb-3">
                     <div className="relative flex-1">
                       <Key size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                       <input type="password" value={apiKeyInput} onChange={(e) => setApiKeyInput(e.target.value)} placeholder={`Enter your ${aiProvider} API key...`}
@@ -335,6 +386,24 @@ export default function DesktopSettings() {
                       className="px-5 py-2.5 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--on-primary)] transition-all min-w-[80px]"
                       style={{ background: 'var(--primary)' }}>SAVE</button>
                   </div>
+
+                  <button 
+                    onClick={async () => {
+                      const key = apiKeyInput || aiApiKeys[aiProvider]
+                      if (!key) { flashSave('API Key를 먼저 입력하세요'); return }
+                      flashSave('테스트 중...')
+                      try {
+                        const { testAIConnection } = await import('@/app/actions/ai')
+                        const result = await testAIConnection(key, aiProvider, aiModels[aiProvider])
+                        flashSave(result.success ? `✅ ${result.message}` : `❌ ${result.message}`)
+                      } catch (e: any) {
+                        flashSave(`❌ ${e?.message || '테스트 실패'}`)
+                      }
+                    }}
+                    className="w-full py-2.5 mb-3 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--tertiary)] border border-[var(--tertiary)]/30 hover:bg-[var(--tertiary)]/10 transition flex items-center justify-center gap-2">
+                    <Zap size={14} /> TEST_CONNECTION
+                  </button>
+
                   <div className="mt-3 flex items-start gap-2"><span className="text-[10px] mt-0.5">🔒</span><p className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)] leading-relaxed">API 키는 브라우저 로컬 저장소에만 보관되며, 서버에 저장되지 않습니다.</p></div>
                 </div>
               </div>

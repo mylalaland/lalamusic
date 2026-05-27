@@ -52,6 +52,8 @@ export default function SettingsPage() {
     setAutoPlayNext, setHighQualityAudio, setThemeColor, setShowLyrics
   } = useSettingsStore()
   const [apiKeyInput, setApiKeyInput] = useState('')
+  const [fetchedModels, setFetchedModels] = useState<{id: string, label: string}[]>([])
+  const [isFetchingModels, setIsFetchingModels] = useState(false)
   const [user, setUser] = useState<any>(null)
 
   useEffect(() => {
@@ -463,18 +465,52 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* [NEW] Model Selection */}
+              {/* [NEW] Model Selection — 동적 조회 */}
               <div className="mb-4">
                 <label className="font-['Work_Sans'] text-[9px] text-[var(--tertiary)] tracking-[0.3em] uppercase block mb-3">SELECT_MODEL</label>
-                <select 
-                  value={aiModels[aiProvider]} 
-                  onChange={(e) => setAiModel(aiProvider, e.target.value)}
-                  className="w-full py-2.5 px-3 font-['Work_Sans'] text-sm text-[var(--text-main)] outline-none border border-[var(--border-strong)] focus:border-[var(--tertiary)] transition"
-                  style={{ background: 'var(--bg-container-highest)' }}>
-                  {(AI_MODELS[aiProvider] || []).map(m => (
-                    <option key={m.id} value={m.id} className="bg-[var(--bg-surface)] text-[var(--text-main)]">{m.label}</option>
-                  ))}
-                </select>
+                
+                {/* 현재 선택된 모델 표시 */}
+                <div className="flex gap-2 mb-2">
+                  <select 
+                    value={aiModels[aiProvider]} 
+                    onChange={(e) => setAiModel(aiProvider, e.target.value)}
+                    className="flex-1 py-2.5 px-3 font-['Work_Sans'] text-sm text-[var(--text-main)] outline-none border border-[var(--border-strong)] focus:border-[var(--tertiary)] transition"
+                    style={{ background: 'var(--bg-container-highest)' }}>
+                    {/* 동적 조회된 모델이 있으면 그걸 사용, 없으면 기본 목록 */}
+                    {(fetchedModels.length > 0 ? fetchedModels : AI_MODELS[aiProvider] || []).map(m => (
+                      <option key={m.id} value={m.id} className="bg-[var(--bg-surface)] text-[var(--text-main)]">{m.label}</option>
+                    ))}
+                  </select>
+                  <button 
+                    onClick={async () => {
+                      const key = apiKeyInput || aiApiKeys[aiProvider]
+                      if (!key) { showToast('API Key를 먼저 입력하세요'); return }
+                      setIsFetchingModels(true)
+                      try {
+                        const { fetchAvailableModels } = await import('@/app/actions/ai')
+                        const models = await fetchAvailableModels(key, aiProvider)
+                        if (models.length > 0) {
+                          setFetchedModels(models)
+                          showToast(`${models.length}개 모델 발견!`)
+                        } else {
+                          showToast('사용 가능한 모델이 없습니다')
+                        }
+                      } catch (e: any) {
+                        showToast(`모델 조회 실패: ${e?.message || '오류'}`)
+                      } finally {
+                        setIsFetchingModels(false)
+                      }
+                    }}
+                    disabled={isFetchingModels}
+                    className="px-3 py-2.5 font-['Work_Sans'] text-[10px] tracking-wider font-bold text-[var(--tertiary)] border border-[var(--tertiary)]/30 hover:bg-[var(--tertiary)]/10 transition whitespace-nowrap disabled:opacity-50">
+                    {isFetchingModels ? '조회중...' : '🔍 FETCH'}
+                  </button>
+                </div>
+                {fetchedModels.length > 0 && (
+                  <p className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)]">
+                    ✨ API에서 {fetchedModels.length}개 모델 조회됨. 최신 모델이 상단에 표시됩니다.
+                  </p>
+                )}
               </div>
 
               {/* API Key Input */}
