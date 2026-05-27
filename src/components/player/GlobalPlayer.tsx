@@ -6,7 +6,7 @@ import { analyzeMusicMetadata } from '@/app/actions/metadata'
 import { getExternalLyrics } from '@/app/actions/lyrics'
 import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
-import { WebAudioFallbackPlayer, needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
+import { needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
 import { unlockAllAudioContexts } from '@/lib/audio/sharedAudioCtx'
 import { 
   Play, Pause, SkipBack, SkipForward, ChevronDown, ListMusic, MoreHorizontal,
@@ -35,13 +35,13 @@ export default function GlobalPlayer() {
   } = usePlayerStore()
 
   const audioRef = useRef<HTMLAudioElement>(null)
+  const directAudioRef = useRef<HTMLAudioElement>(null)
   const activeTrackRef = useRef<HTMLDivElement>(null)
   const activeLyricRef = useRef<HTMLParagraphElement>(null)
   const seekTimeRef = useRef<number>(0)
   const equalizerRef = useRef<Equalizer | null>(null)
   const touchStartRef = useRef<{x: number, y: number} | null>(null)
   const retryCountRef = useRef(0)
-  const fallbackPlayerRef = useRef<WebAudioFallbackPlayer | null>(null)
   
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -74,6 +74,10 @@ export default function GlobalPlayer() {
       if (audioRef.current) {
         const silentPlay = audioRef.current.play()
         silentPlay?.then(() => { audioRef.current?.pause() }).catch(() => {})
+      }
+      if (directAudioRef.current) {
+        const silentPlay = directAudioRef.current.play()
+        silentPlay?.then(() => { directAudioRef.current?.pause() }).catch(() => {})
       }
       // Unlock all Shared AudioContexts (Media & Fallback)
       unlockAllAudioContexts().catch(() => {})
@@ -248,39 +252,6 @@ export default function GlobalPlayer() {
     }
   }, [currentLyricIndex, viewMode])
 
-  // [FIX] Cleanup fallback player when switching tracks or unmounting
-  const cleanupFallback = () => {
-    if (fallbackPlayerRef.current) {
-      fallbackPlayerRef.current.destroy()
-      fallbackPlayerRef.current = null
-    }
-    setIsFallbackMode(false)
-  }
-
-  // [NEW] Start playback via Web Audio fallback (for iOS FLAC/OGG etc)
-  const startFallbackPlayback = async (url: string) => {
-    cleanupFallback()
-    
-    const player = new WebAudioFallbackPlayer(undefined)
-    fallbackPlayerRef.current = player
-    setIsFallbackMode(true)
-
-    player.onTimeUpdate = (t) => {
-      if (!isSeeking) setCurrentTime(t)
-    }
-    player.onDurationChange = (d) => setDuration(d)
-    player.onEnded = () => handleNextWrapped()
-
-    const ok = await player.loadAndDecode(url)
-    if (ok) {
-      player.setVolume(isMuted ? 0 : volume)
-      player.setPlaybackRate(playbackRate)
-      if (isPlaying) player.play()
-    } else {
-      console.error('[WebAudioFallback] Failed to decode, giving up.')
-    }
-  }
-
   // 곡 변경 및 메타데이터 로딩
   useEffect(() => {
     if (!track) return
@@ -318,96 +289,95 @@ export default function GlobalPlayer() {
       ? (track as any).src 
       : `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
 
-    // [NEW] Check if this format needs Web Audio fallback (iOS FLAC/OGG/OPUS/WMA)
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
+    if (directAudioRef.current) { directAudioRef.current.pause(); directAudioRef.current.src = ''; }
+
+    // [NEW] Check if this format needs direct audio playback without Equalizer
     if (needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)) {
-      console.log('[GlobalPlayer] iOS unsupported format detected, using Web Audio fallback')
-      startFallbackPlayback(newSrc)
+      console.log('[GlobalPlayer] iOS unsupported format detected, using Direct Audio')
+      setIsFallbackMode(true)
+      
+      if (directAudioRef.current) {
+        directAudioRef.current.crossOrigin = "anonymous"
+        directAudioRef.current.src = newSrc
+        directAudioRef.current.playbackRate = playbackRate
+        directAudioRef.current.volume = isMuted ? 0 : volume
+        retryCountRef.current = 0
+        directAudioRef.current.load()
+        
+        const handleCanPlay = () => {
+          if ((track as any).initialPosition) directAudioRef.current!.currentTime = (track as any).initialPosition
+          if (isPlaying) {
+            unlockAllAudioContexts().catch(() => {})
+            directAudioRef.current!.play().catch((e) => console.warn('iOS direct play blocked:', e))
+          }
+          directAudioRef.current!.removeEventListener('canplaythrough', handleCanPlay)
+        }
+        directAudioRef.current.addEventListener('canplaythrough', handleCanPlay)
+      }
       return
     }
 
     // Standard <audio> playback path
-    cleanupFallback()
-
+    setIsFallbackMode(false)
     if (audioRef.current) {
-      if (audioRef.current.src.indexOf(track.id) === -1) {
-        // [FIX] iOS Safari: crossOrigin must be set BEFORE src assignment
-        audioRef.current.crossOrigin = "anonymous"
-        audioRef.current.src = newSrc
-        audioRef.current.playbackRate = playbackRate
-        audioRef.current.volume = isMuted ? 0 : volume
-        retryCountRef.current = 0
-        audioRef.current.load()
-        
-        // [FIX] iOS Safari: Use canplaythrough event for reliable playback
-        const handleCanPlay = () => {
-          if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
-          if (isPlaying) {
-            // Unlock all AudioContexts for iOS
-            unlockAllAudioContexts().catch(() => {})
-            audioRef.current!.play().catch((e) => {
-              console.warn('iOS play blocked:', e)
-            })
-          }
-          audioRef.current!.removeEventListener('canplaythrough', handleCanPlay)
+      audioRef.current.crossOrigin = "anonymous"
+      audioRef.current.src = newSrc
+      audioRef.current.playbackRate = playbackRate
+      audioRef.current.volume = isMuted ? 0 : volume
+      retryCountRef.current = 0
+      audioRef.current.load()
+      
+      const handleCanPlay = () => {
+        if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
+        if (isPlaying) {
+          unlockAllAudioContexts().catch(() => {})
+          audioRef.current!.play().catch((e) => console.warn('iOS play blocked:', e))
         }
-        audioRef.current.addEventListener('canplaythrough', handleCanPlay)
-      } else {
-        if ((track as any).initialPosition) {
-          audioRef.current.currentTime = (track as any).initialPosition
-          if (isPlaying) audioRef.current.play().catch(() => {})
-        }
+        audioRef.current!.removeEventListener('canplaythrough', handleCanPlay)
       }
+      audioRef.current.addEventListener('canplaythrough', handleCanPlay)
     }
 
-    return () => { cleanupFallback() }
+    return () => {
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
+      if (directAudioRef.current) { directAudioRef.current.pause(); directAudioRef.current.src = ''; }
+    }
   }, [track?.id])
 
   // 재생 상태 동기화
   useEffect(() => {
-    // [NEW] Fallback mode: sync play/pause with WebAudioFallbackPlayer
-    if (isFallbackMode && fallbackPlayerRef.current) {
-      unlockAllAudioContexts().catch(() => {})
-      if (isPlaying) {
-        fallbackPlayerRef.current.play()
-      } else {
-        fallbackPlayerRef.current.pause()
-      }
-      return
-    }
-
-    if (!audioRef.current) return
+    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
+    if (!activeAudio) return
+    
     if (isPlaying) {
-      // [FIX] iOS Safari: Always resume AudioContext before play
       unlockAllAudioContexts().catch(() => {})
-      // [FIX] Only play if audio has data (readyState >= HAVE_CURRENT_DATA)
-      if (audioRef.current.readyState >= 2) {
-        audioRef.current.play().catch((e) => {
-          console.warn('Play state sync blocked:', e)
-        })
+      if (activeAudio.readyState >= 2) {
+        activeAudio.play().catch((e) => console.warn('Play state sync blocked:', e))
       } else {
-        // Wait for enough data before playing
         const onReady = () => {
-          audioRef.current?.play().catch(() => {})
-          audioRef.current?.removeEventListener('canplay', onReady)
+          activeAudio.play().catch(() => {})
+          activeAudio.removeEventListener('canplay', onReady)
         }
-        audioRef.current.addEventListener('canplay', onReady)
+        activeAudio.addEventListener('canplay', onReady)
       }
     } else {
-      audioRef.current.pause()
+      activeAudio.pause()
     }
   }, [isPlaying, isFallbackMode])
 
   // 볼륨 및 EQ
   useEffect(() => {
+    const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
+
+    if (directAudioRef.current) {
+      directAudioRef.current.volume = effectiveVolume
+      directAudioRef.current.playbackRate = playbackRate
+    }
+
     if (!audioRef.current) return
     if (!equalizerRef.current) {
       try { equalizerRef.current = new Equalizer(audioRef.current) } catch(e) { }
-    }
-    const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
-    
-    // Fallback Player 볼륨 동기화
-    if (fallbackPlayerRef.current) {
-      fallbackPlayerRef.current.setVolume(effectiveVolume)
     }
 
     if (equalizerRef.current) {
@@ -417,7 +387,7 @@ export default function GlobalPlayer() {
       audioRef.current.volume = effectiveVolume
     }
     audioRef.current.playbackRate = playbackRate
-  }, [volume, isMuted, playbackRate, isFallbackMode])
+  }, [volume, isMuted, playbackRate])
 
   useEffect(() => {
     if (equalizerRef.current) {
@@ -426,15 +396,17 @@ export default function GlobalPlayer() {
   }, [eqGains])
 
   const handleTimeUpdate = () => { 
-    if (audioRef.current && !isSeeking) {
-      const t = audioRef.current.currentTime
+    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
+    if (activeAudio && !isSeeking) {
+      const t = activeAudio.currentTime
       setCurrentTime(t)
       seekTimeRef.current = t
     }
   }
   const handleLoadedMetadata = () => { 
-    if (audioRef.current && isFinite(audioRef.current.duration)) {
-      setDuration(audioRef.current.duration)
+    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
+    if (activeAudio && isFinite(activeAudio.duration)) {
+      setDuration(activeAudio.duration)
     } else if ((track as any)?.duration) {
       setDuration((track as any).duration)
     }
@@ -447,10 +419,9 @@ export default function GlobalPlayer() {
     seekTimeRef.current = time
   }
   const handleSeekEnd = () => {
-    if (isFallbackMode && fallbackPlayerRef.current) {
-      fallbackPlayerRef.current.seek(seekTimeRef.current)
-    } else if (audioRef.current) {
-      audioRef.current.currentTime = seekTimeRef.current
+    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
+    if (activeAudio) {
+      activeAudio.currentTime = seekTimeRef.current
     }
     setIsSeeking(false)
   }
@@ -530,18 +501,19 @@ export default function GlobalPlayer() {
   }, [track, localCoverArt])
 
   useEffect(() => {
-    if (!navigator.mediaSession || !audioRef.current) return
+    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
+    if (!navigator.mediaSession || !activeAudio) return
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
     if (validDuration > 0 && isFinite(validDuration)) {
       try {
         navigator.mediaSession.setPositionState({
           duration: validDuration,
-          playbackRate: audioRef.current.playbackRate,
-          position: audioRef.current.currentTime
+          playbackRate: activeAudio.playbackRate,
+          position: activeAudio.currentTime
         })
       } catch (e) { }
     }
-  }, [isPlaying, validDuration, playbackRate, isSeeking])
+  }, [isPlaying, validDuration, playbackRate, isSeeking, isFallbackMode])
 
   if (!track) return null
 
@@ -570,33 +542,15 @@ export default function GlobalPlayer() {
   }
 
   const handleAudioError = () => {
-    if (!audioRef.current || !track) return
+    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
+    if (!activeAudio || !track) return
     
-    // [NEW] If format is unsupported, try Web Audio fallback before retrying
-    if (retryCountRef.current === 0 && !isFallbackMode) {
-      const trackName = track.name || track.title || ''
-      const trackMime = track.mimeType || ''
-      // Check if this might be a format issue (iOS doesn't give clear error codes)
-      const lowerName = trackName.toLowerCase()
-      const unsupported = lowerName.endsWith('.flac') || lowerName.endsWith('.ogg') || 
-        lowerName.endsWith('.opus') || lowerName.endsWith('.wma') ||
-        trackMime.includes('flac') || trackMime.includes('ogg') || 
-        trackMime.includes('opus') || trackMime.includes('wma')
-      
-      if (unsupported) {
-        console.log('[GlobalPlayer] <audio> error on unsupported format, switching to Web Audio fallback')
-        const url = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(trackMime)}&name=${encodeURIComponent(trackName)}`
-        startFallbackPlayback(url)
-        return
-      }
-    }
-
     if (retryCountRef.current < 3) {
       retryCountRef.current += 1
-      const currentSrc = audioRef.current.src
-      audioRef.current.src = currentSrc
-      audioRef.current.load()
-      if (isPlaying) audioRef.current.play().catch(() => {})
+      const currentSrc = activeAudio.src
+      activeAudio.src = currentSrc
+      activeAudio.load()
+      if (isPlaying) activeAudio.play().catch(() => {})
     }
   }
 
@@ -609,6 +563,13 @@ export default function GlobalPlayer() {
     <>
       <audio 
         ref={audioRef} preload="auto" playsInline 
+        onTimeUpdate={handleTimeUpdate} 
+        onLoadedMetadata={handleLoadedMetadata} 
+        onEnded={handleNextWrapped}
+        onError={handleAudioError} 
+      />
+      <audio 
+        ref={directAudioRef} preload="auto" playsInline 
         onTimeUpdate={handleTimeUpdate} 
         onLoadedMetadata={handleLoadedMetadata} 
         onEnded={handleNextWrapped}
