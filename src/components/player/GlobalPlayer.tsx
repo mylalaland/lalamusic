@@ -69,18 +69,26 @@ export default function GlobalPlayer() {
   // [FIX] iOS Safari: AudioContext must be unlocked via user gesture
   useEffect(() => {
     console.log("GlobalPlayer Mounted")
+    let unlocked = false
     const unlockAudio = () => {
-      // Create a silent buffer and play it to unlock HTML5 audio
-      if (audioRef.current) {
+      if (unlocked) return
+      unlocked = true
+      
+      // Create a silent buffer and play it to unlock HTML5 audio ONLY IF PAUSED
+      if (audioRef.current && audioRef.current.paused) {
         const silentPlay = audioRef.current.play()
         silentPlay?.then(() => { audioRef.current?.pause() }).catch(() => {})
       }
-      if (directAudioRef.current) {
+      if (directAudioRef.current && directAudioRef.current.paused) {
         const silentPlay = directAudioRef.current.play()
         silentPlay?.then(() => { directAudioRef.current?.pause() }).catch(() => {})
       }
+      
       // Unlock all Shared AudioContexts (Media & Fallback)
       unlockAllAudioContexts().catch(() => {})
+      
+      document.removeEventListener('touchstart', unlockAudio)
+      document.removeEventListener('click', unlockAudio)
     }
     document.addEventListener('touchstart', unlockAudio, { passive: true })
     document.addEventListener('click', unlockAudio, { passive: true })
