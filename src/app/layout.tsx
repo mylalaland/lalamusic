@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
+import ThemeInitializer from '@/components/layout/ThemeInitializer'
 
 export const viewport: Viewport = {
   themeColor: '#fbf9f5',
@@ -37,6 +38,7 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,700;1,400&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body className="antialiased" style={{ background: '#fbf9f5', color: '#31332e' }} suppressHydrationWarning>
+        <ThemeInitializer />
         {children}
       </body>
     </html>
