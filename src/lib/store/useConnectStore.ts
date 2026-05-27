@@ -8,29 +8,36 @@ interface FolderInfo {
 interface ConnectState {
   path: FolderInfo[]
   items: any[]
-  originalItems: any[]          // [NEW] 필터링/검색 전 원본 데이터 캐시
+  originalItems: any[]
   currentFolderId: string | null
   isAiProcessing: boolean
   isAiFiltered: boolean
-  serverSort: string            // [NEW] 정렬 상태 유지 (name, modified, size)
-  filterBy: string              // [NEW] 필터 상태 유지 (all, folders, files)
+  serverSort: string
+  filterBy: string
+  folderCache: Record<string, any[]>  // [NEW] 폴더별 캐시
+  settingsLoaded: boolean             // [NEW] 설정 로딩 완료 여부
+  cachedAllowedExts: string[]         // [NEW] 설정 캐시
 
-  // 액션
   setPath: (path: FolderInfo[]) => void
   pushPath: (folder: FolderInfo) => void
   popPath: () => void
   jumpTo: (index: number) => void
   setItems: (items: any[]) => void
-  setOriginalItems: (items: any[]) => void   // [NEW]
+  setOriginalItems: (items: any[]) => void
   setCurrentFolderId: (id: string | null) => void
-  setIsAiProcessing: (isProcessing: boolean) => void
-  setIsAiFiltered: (isFiltered: boolean) => void
-  setServerSort: (sort: string) => void      // [NEW]
-  setFilterBy: (filter: string) => void      // [NEW]
+  setIsAiProcessing: (v: boolean) => void
+  setIsAiFiltered: (v: boolean) => void
+  setServerSort: (sort: string) => void
+  setFilterBy: (filter: string) => void
+  setCacheForFolder: (folderId: string, items: any[]) => void
+  getCacheForFolder: (folderId: string) => any[] | null
+  clearCache: () => void
+  setSettingsLoaded: (v: boolean) => void
+  setCachedAllowedExts: (exts: string[]) => void
   reset: () => void
 }
 
-export const useConnectStore = create<ConnectState>((set) => ({
+export const useConnectStore = create<ConnectState>((set, get) => ({
   path: [{ id: 'root', name: 'Google Drive' }],
   items: [],
   originalItems: [],
@@ -39,6 +46,9 @@ export const useConnectStore = create<ConnectState>((set) => ({
   isAiFiltered: false,
   serverSort: 'name',
   filterBy: 'all',
+  folderCache: {},
+  settingsLoaded: false,
+  cachedAllowedExts: [],
 
   setPath: (path) => set({ path }),
   pushPath: (folder) => set((state) => ({ path: [...state.path, folder] })),
@@ -51,18 +61,28 @@ export const useConnectStore = create<ConnectState>((set) => ({
   setItems: (items) => set({ items }),
   setOriginalItems: (items) => set({ originalItems: items }),
   setCurrentFolderId: (id) => set({ currentFolderId: id }),
-  setIsAiProcessing: (isProcessing) => set({ isAiProcessing: isProcessing }),
-  setIsAiFiltered: (isFiltered) => set({ isAiFiltered: isFiltered }),
-  setServerSort: (sort) => set({ serverSort: sort }),
-  setFilterBy: (filter) => set({ filterBy: filter }),
+  setIsAiProcessing: (v) => set({ isAiProcessing: v }),
+  setIsAiFiltered: (v) => set({ isAiFiltered: v }),
+  setServerSort: (sort) => set({ serverSort: sort, folderCache: {} }),  // 정렬 변경 시 캐시 초기화
+  setFilterBy: (filter) => set({ filterBy: filter, folderCache: {} }),  // 필터 변경 시 캐시 초기화
+  
+  setCacheForFolder: (folderId, items) => set((state) => ({
+    folderCache: { ...state.folderCache, [folderId]: items }
+  })),
+  getCacheForFolder: (folderId) => {
+    return get().folderCache[folderId] || null
+  },
+  clearCache: () => set({ folderCache: {} }),
+  setSettingsLoaded: (v) => set({ settingsLoaded: v }),
+  setCachedAllowedExts: (exts) => set({ cachedAllowedExts: exts }),
+  
   reset: () => set({ 
     path: [{ id: 'root', name: 'Google Drive' }], 
-    items: [], 
-    originalItems: [],
+    items: [], originalItems: [],
     currentFolderId: null,
-    isAiProcessing: false,
-    isAiFiltered: false,
-    serverSort: 'name',
-    filterBy: 'all'
+    isAiProcessing: false, isAiFiltered: false,
+    serverSort: 'name', filterBy: 'all',
+    folderCache: {},
+    settingsLoaded: false, cachedAllowedExts: []
   })
 }))

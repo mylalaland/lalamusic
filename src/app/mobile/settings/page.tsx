@@ -13,7 +13,7 @@ import {
   saveExtensionSettings, resetMusicLibrary, resetPlaylists 
 } from '@/app/actions/settings'
 import { getDriveFolders, getSharedFolders } from '@/app/actions/library'
-import { useSettingsStore, type AIProvider } from '@/lib/store/useSettingsStore'
+import { useSettingsStore, type AIProvider, AI_MODELS } from '@/lib/store/useSettingsStore'
 import { Wand2, Key, Palette } from 'lucide-react'
 
 const AUDIO_FORMATS = ['mp3', 'flac', 'aac', 'm4a', 'wav', 'ogg']
@@ -47,7 +47,7 @@ export default function SettingsPage() {
 
   // AI 상태
   const { 
-    aiProvider, aiApiKeys, setAiProvider, setAiApiKey,
+    aiProvider, aiApiKeys, aiModels, setAiProvider, setAiApiKey, setAiModel,
     autoPlayNext, highQualityAudio, themeColor, showLyrics,
     setAutoPlayNext, setHighQualityAudio, setThemeColor, setShowLyrics
   } = useSettingsStore()
@@ -463,6 +463,20 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* [NEW] Model Selection */}
+              <div className="mb-4">
+                <label className="font-['Work_Sans'] text-[9px] text-[var(--tertiary)] tracking-[0.3em] uppercase block mb-3">SELECT_MODEL</label>
+                <select 
+                  value={aiModels[aiProvider]} 
+                  onChange={(e) => setAiModel(aiProvider, e.target.value)}
+                  className="w-full py-2.5 px-3 font-['Work_Sans'] text-sm text-[var(--text-main)] outline-none border border-[var(--border-strong)] focus:border-[var(--tertiary)] transition"
+                  style={{ background: 'var(--bg-container-highest)' }}>
+                  {(AI_MODELS[aiProvider] || []).map(m => (
+                    <option key={m.id} value={m.id} className="bg-[var(--bg-surface)] text-[var(--text-main)]">{m.label}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* API Key Input */}
               <div>
                 <label className="font-['Work_Sans'] text-[9px] text-[var(--tertiary)] tracking-[0.3em] uppercase block mb-3">API_KEY</label>
@@ -480,6 +494,24 @@ export default function SettingsPage() {
                     SAVE
                   </button>
                 </div>
+
+                {/* [NEW] TEST 버튼 */}
+                <button 
+                  onClick={async () => {
+                    const key = apiKeyInput || aiApiKeys[aiProvider]
+                    if (!key) { showToast('API Key를 먼저 입력하세요'); return }
+                    showToast('테스트 중...')
+                    try {
+                      const { testAIConnection } = await import('@/app/actions/ai')
+                      const result = await testAIConnection(key, aiProvider, aiModels[aiProvider])
+                      showToast(result.success ? `✅ ${result.message}` : `❌ ${result.message}`)
+                    } catch (e: any) {
+                      showToast(`❌ ${e?.message || '테스트 실패'}`)
+                    }
+                  }}
+                  className="w-full py-2.5 mb-3 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--tertiary)] border border-[var(--tertiary)]/30 hover:bg-[var(--tertiary)]/10 transition flex items-center justify-center gap-2">
+                  <Zap size={14} /> TEST_CONNECTION
+                </button>
 
                 {/* Provider Guide */}
                 <div className="p-3 border border-[var(--border-strong)]" style={{ background: 'var(--bg-container-highest)' }}>

@@ -1,19 +1,108 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 
-// ✅ 1. 화면에 있는 리스트 중에서 골라주기 (Connect 탭용)
-export async function recommendMusic(userQuery: string, musicList: any[], apiKey?: string, provider: string = 'gemini') {
-  if (!apiKey) return { error: 'API Key가 없습니다. 설정에서 API Key를 등록해주세요.' }
+// ====================================================================
+// 유틸: AI 프로바이더별 텍스트 생성
+// ====================================================================
+async function generateAIResponse(
+  prompt: string, 
+  apiKey: string, 
+  provider: string = 'gemini', 
+  model?: string
+): Promise<string> {
+  if (provider === 'gemini') {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai')
+    const genAI = new GoogleGenerativeAI(apiKey)
+    const geminiModel = genAI.getGenerativeModel({ model: model || 'gemini-2.0-flash' })
+    const result = await geminiModel.generateContent(prompt)
+    return result.response.text()
+  } 
+  
+  if (provider === 'openai') {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: model || 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 2000
+      })
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err?.error?.message || `OpenAI API error: ${res.status}`)
+    }
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content || ''
+  }
+  
+  if (provider === 'claude') {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: model || 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err?.error?.message || `Claude API error: ${res.status}`)
+    }
+    const data = await res.json()
+    return data.content?.[0]?.text || ''
+  }
+
+  throw new Error(`지원하지 않는 AI 프로바이더: ${provider}`)
+}
+
+// ====================================================================
+// API 키 연결 테스트
+// ====================================================================
+export async function testAIConnection(
+  apiKey: string, 
+  provider: string = 'gemini', 
+  model?: string
+): Promise<{ success: boolean, message: string, model: string }> {
+  if (!apiKey) return { success: false, message: 'API Key가 비어있습니다.', model: model || '' }
+  
+  try {
+    const response = await generateAIResponse(
+      'Reply with exactly one word: "OK"', 
+      apiKey, provider, model
+    )
+    if (response && response.trim().length > 0) {
+      return { success: true, message: `연결 성공! 응답: "${response.trim().slice(0, 50)}"`, model: model || '' }
+    }
+    return { success: false, message: '응답이 비어있습니다.', model: model || '' }
+  } catch (e: any) {
+    return { success: false, message: e.message || '연결 실패', model: model || '' }
+  }
+}
+
+// ====================================================================
+// 1. 화면에 있는 리스트 중에서 골라주기 (Connect 탭용)
+// ====================================================================
+export async function recommendMusic(
+  userQuery: string, 
+  musicList: any[], 
+  apiKey?: string, 
+  provider: string = 'gemini',
+  model?: string
+) {
+  if (!apiKey) return { error: 'API Key가 없습니다. 설정에서 API Key를 등록해주세요.', songs: [] }
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey)
-    
-    // ⚠️ 수정됨: 1.5-flash-latest로 통일
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' })
-
-    // 데이터 절약: 이름만 추려서 보냄
     const songsText = musicList.map((file, index) => `${index}:${file.name}`).join('\n')
 
     const prompt = `
@@ -22,38 +111,51 @@ export async function recommendMusic(userQuery: string, musicList: any[], apiKey
       Here is the candidate list (Index:Title):
       ${songsText}
       
-      Task: Select songs that best match the query.
+      Task: Select songs that best match the query. Be generous - select at least 5-10 songs if available.
       Output: JSON array of indices ONLY. e.g. [0, 5, 12]
       Do not output any other text.
     `
 
-    const result = await model.generateContent(prompt)
-    const response = await result.response
-    let text = response.text()
+    const text = await generateAIResponse(prompt, apiKey, provider, model)
 
     // JSON 파싱 (마크다운 제거)
-    text = text.replace(/```json/g, '').replace(/```/g, '').trim()
-    const firstBracket = text.indexOf('[')
-    const lastBracket = text.lastIndexOf(']')
+    const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim()
+    const firstBracket = cleaned.indexOf('[')
+    const lastBracket = cleaned.lastIndexOf(']')
     
-    if (firstBracket === -1) throw new Error("AI 응답 형식을 파싱할 수 없습니다.")
+    if (firstBracket === -1) {
+      console.error('AI response:', text)
+      return { error: 'AI 응답을 파싱할 수 없습니다.', songs: [] }
+    }
     
-    const jsonString = text.substring(firstBracket, lastBracket + 1)
+    const jsonString = cleaned.substring(firstBracket, lastBracket + 1)
     const indices = JSON.parse(jsonString)
 
-    // 선택된 인덱스를 다시 노래 객체로 변환
-    const selectedSongs = indices.map((idx: number) => musicList[idx]).filter((item: any) => item !== undefined)
+    const selectedSongs = indices
+      .map((idx: number) => musicList[idx])
+      .filter((item: any) => item !== undefined)
+
+    if (selectedSongs.length === 0) {
+      return { error: 'AI가 선택한 곡을 매칭할 수 없습니다.', songs: [] }
+    }
 
     return { songs: selectedSongs }
 
   } catch (error: any) {
     console.error("❌ AI Error:", error)
-    return { error: error.message || 'AI 처리 중 오류가 발생했습니다.' }
+    return { error: error.message || 'AI 처리 중 오류가 발생했습니다.', songs: [] }
   }
 }
 
-// ✅ 2. DB에 있는 전체 노래 중에서 골라주기 (토큰 최적화 버전)
-export async function searchLibraryWithAI(userQuery: string, apiKey?: string, provider: string = 'gemini') {
+// ====================================================================
+// 2. DB에 있는 전체 노래 중에서 골라주기
+// ====================================================================
+export async function searchLibraryWithAI(
+  userQuery: string, 
+  apiKey?: string, 
+  provider: string = 'gemini',
+  model?: string
+) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
@@ -61,58 +163,42 @@ export async function searchLibraryWithAI(userQuery: string, apiKey?: string, pr
   if (!apiKey) throw new Error('API Key가 없습니다. 설정에서 API Key를 등록해주세요.')
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' })
-
-    // [STEP 1] 검색어에서 핵심 키워드만 추출 (DB 검색용) - 매우 적은 토큰 소모
     const keywordPrompt = `
       User wants music: "${userQuery}"
       Extract 1 to 3 search keywords (artist names, moods, genres, or title words) to find audio files in a database.
       Output ONLY comma-separated keywords, no extra text.
       Example: "아이유 발라드 틀어줘" -> "아이유, 발라드"
     `
-    const keywordRes = await model.generateContent(keywordPrompt)
-    const keywords = keywordRes.response.text().split(',').map(k => k.trim()).filter(Boolean)
-
+    const keywordText = await generateAIResponse(keywordPrompt, apiKey, provider, model)
+    const keywords = keywordText.split(',').map(k => k.trim()).filter(Boolean)
     if (keywords.length === 0) keywords.push(userQuery)
 
-    // [STEP 2] 키워드를 바탕으로 DB에서 최대 100개 후보 추출
-    // (1만 개 전체를 AI에게 보내면 토큰 낭비가 심하므로 필터링)
     let queryBuilder = supabase
       .from('music_files')
       .select('id, name')
       .eq('user_id', user.id)
 
-    // 키워드 중 하나라도 포함된 것 우선 검색
     const orCondition = keywords.map(k => `name.ilike.%${k}%`).join(',')
-    if (orCondition) {
-        queryBuilder = queryBuilder.or(orCondition)
-    }
+    if (orCondition) queryBuilder = queryBuilder.or(orCondition)
 
-    // 만약 키워드로 찾은 게 너무 적다면 최신순으로 100개 가져옴 (다양성 확보)
-    const { data: candidates, error } = await queryBuilder.limit(100)
-    
+    const { data: candidates } = await queryBuilder.limit(100)
     let finalCandidates = candidates || []
     
-    // 키워드로 찾은 결과가 10개 미만이면, 그냥 전체 중 100개를 랜덤/최신순으로 섞음
     if (finalCandidates.length < 10) {
-        const { data: randomFallback } = await supabase
-            .from('music_files')
-            .select('id, name')
-            .eq('user_id', user.id)
-            .limit(100)
-        finalCandidates = randomFallback || []
+      const { data: randomFallback } = await supabase
+        .from('music_files')
+        .select('id, name')
+        .eq('user_id', user.id)
+        .limit(100)
+      finalCandidates = randomFallback || []
     }
 
     if (finalCandidates.length === 0) return []
 
-    // [STEP 3] 추려진 100개 후보만 AI에게 넘겨 최종 선택 (토큰 대폭 절약)
-    const result = await recommendMusic(userQuery, finalCandidates, apiKey, provider)
-
+    const result = await recommendMusic(userQuery, finalCandidates, apiKey, provider, model)
     if (result.error || !result.songs || result.songs.length === 0) return []
 
     const selectedIds = result.songs.map((s: any) => s.id)
-    
     const { data: fullTracks } = await supabase
       .from('music_files')
       .select('*')
@@ -125,32 +211,33 @@ export async function searchLibraryWithAI(userQuery: string, apiKey?: string, pr
   }
 }
 
-// ✅ 3. 지정된 드라이브 폴더 내에서 AI 키워드 기반으로 검색
-export async function searchDriveWithAI(folderId: string, userQuery: string, apiKey?: string, provider: string = 'gemini') {
+// ====================================================================
+// 3. 드라이브 폴더 내 AI 키워드 검색 (하위 폴더 재귀)
+// ====================================================================
+export async function searchDriveWithAI(
+  folderId: string, 
+  userQuery: string, 
+  apiKey?: string, 
+  provider: string = 'gemini',
+  model?: string
+) {
   if (!apiKey) throw new Error('API Key가 없습니다.')
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' })
-
     const keywordPrompt = `
       User wants music: "${userQuery}"
       Extract exactly 1 main search keyword (e.g., artist name, genre) to use in a Google Drive 'name contains' search.
       Output ONLY the keyword, no extra text.
       Example: "아이유 발라드 틀어줘" -> "아이유"
     `
-    const keywordRes = await model.generateContent(keywordPrompt)
-    let keyword = keywordRes.response.text().trim()
-    if (!keyword) keyword = userQuery
+    const keyword = (await generateAIResponse(keywordPrompt, apiKey, provider, model)).trim() || userQuery
 
-    // Google Drive API 호출
     const { getDriveContents } = await import('./library')
     const { files } = await getDriveContents(folderId, [], keyword, 'name', 'files')
     
-    // AI 검색 결과로 가공
     return files.map((f: any) => ({
       id: f.id, title: f.name, artist: 'Google Drive',
       thumbnail_link: f.thumbnailLink, drive_file_id: f.id, mime_type: f.mimeType,

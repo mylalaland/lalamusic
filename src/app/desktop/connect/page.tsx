@@ -197,7 +197,9 @@ function LazyDuration({ fileId, durationMs }: { fileId: string, durationMs?: num
 export default function DesktopConnect() {
   const { 
     path, setPath, items, setItems, currentFolderId, setCurrentFolderId,
-    serverSort, setServerSort, filterBy, setFilterBy
+    serverSort, setServerSort, filterBy, setFilterBy,
+    setCacheForFolder, getCacheForFolder,
+    settingsLoaded, setSettingsLoaded, cachedAllowedExts, setCachedAllowedExts
   } = useConnectStore()
   const { 
     setTrack, setPlaylist, playlist, currentTrack, isPlaying, togglePlay,
@@ -212,64 +214,50 @@ export default function DesktopConnect() {
   const [trackToAdd, setTrackToAdd] = useState<any>(null)
   const [playlists, setPlaylists] = useState<any[]>([])
   
-  const [allowedExts, setAllowedExts] = useState<string[]>([])
   const [localSearch, setLocalSearch] = useState('')
   const [serverSearch, setServerSearch] = useState('')
   const [aiSearchQuery, setAiSearchQuery] = useState('')
   const [isAiSearching, setIsAiSearching] = useState(false)
   
-  const { aiProvider, aiApiKeys } = useSettingsStore()
+  const { aiProvider, aiApiKeys, aiModels } = useSettingsStore()
   const [visibleCount, setVisibleCount] = useState(50)
-  const [isInitialized, setIsInitialized] = useState(false)
-  // [NEW] Track last sort/filter to detect changes vs simple path changes
-  const prevSortRef = useRef(serverSort)
-  const prevFilterRef = useRef(filterBy)
-  const prevSearchRef = useRef(serverSearch)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const currentFolder = path.length > 0 ? path[path.length - 1] : { id: 'root', name: 'Google Drive' }
 
+  // 설정 로드 (최초 한 번)
   useEffect(() => {
+    if (settingsLoaded) return
     const init = async () => {
         const settings = await getScanSettings()
         const rootId = settings?.base_folder_id || 'root'
         const rootName = settings?.base_folder_name || 'Google Drive'
-        setAllowedExts(settings?.allowed_extensions || [])
-        
-        if (path.length === 0) {
-            setPath([{ id: rootId, name: rootName }])
-        }
-        setIsInitialized(true)
+        setCachedAllowedExts(settings?.allowed_extensions || [])
+        if (path.length === 0) setPath([{ id: rootId, name: rootName }])
+        setSettingsLoaded(true)
     }
     init()
   }, [])
 
-  // [MODIFIED] 폴더 변경 시 캐시 체크 — 같은 폴더면 스킵
+  // 폴더 진입 시 — 캐시 우선
   useEffect(() => {
-    if (!isInitialized || path.length === 0) return
-
-    const sortChanged = prevSortRef.current !== serverSort
-    const filterChanged = prevFilterRef.current !== filterBy
-    const searchChanged = prevSearchRef.current !== serverSearch
-    prevSortRef.current = serverSort
-    prevFilterRef.current = filterBy
-    prevSearchRef.current = serverSearch
-
-    // 정렬/필터/검색이 변경됐으면 강제 리로드
-    if (sortChanged || filterChanged || searchChanged) {
-      loadFolder(currentFolder.id, true)
-      setVisibleCount(50)
-      return
+    if (!settingsLoaded || path.length === 0) return
+    const folderId = currentFolder.id
+    if (folderId === currentFolderId && items.length > 0) return
+    const cached = getCacheForFolder(folderId)
+    if (cached && cached.length > 0) {
+      setItems(cached); setCurrentFolderId(folderId); return
     }
-
-    // [FIX] 같은 폴더의 캐시 데이터가 있으면 API 호출 스킵 (깜빡임 방지)
-    if (currentFolder.id === currentFolderId && items.length > 0) {
-      return
-    }
-
-    loadFolder(currentFolder.id)
+    loadFolder(folderId)
     setVisibleCount(50)
-  }, [path, serverSearch, serverSort, filterBy, isInitialized])
+  }, [path, settingsLoaded])
+
+  // 정렬/필터 변경 시 강제 리로드
+  useEffect(() => {
+    if (!settingsLoaded || !currentFolderId) return
+    loadFolder(currentFolder.id, true)
+    setVisibleCount(50)
+  }, [serverSort, filterBy, serverSearch])
 
   // Infinite scroll sentinel
   useEffect(() => {
@@ -289,18 +277,19 @@ export default function DesktopConnect() {
   const [error, setError] = useState<string | null>(null)
 
   const loadFolder = async (folderId: string, forceReload: boolean = false) => {
-    // [FIX] 캐시된 데이터가 있으면 스킵 (깜빡임 방지)
     if (!forceReload && folderId === currentFolderId && items.length > 0) return
 
     setLoading(true)
     setError(null)
     try {
-      const { folders, files } = await getDriveContents(folderId, allowedExts, serverSearch, serverSort, filterBy)
-      setItems([...folders, ...files])
+      const { folders, files } = await getDriveContents(folderId, cachedAllowedExts, serverSearch, serverSort, filterBy)
+      const combined = [...folders, ...files]
+      setItems(combined)
       setCurrentFolderId(folderId)
+      setCacheForFolder(folderId, combined)
     } catch (e: any) {
       console.error('loadFolder error:', e)
-      setError(e?.message || '폴더를 불러오는 중 오류가 발생했습니다. 다시 로그인해 주세요.')
+      setError(e?.message || '폴더를 불러오는 중 오류가 발생했습니다.')
       setItems([])
     } finally {
       setLoading(false)
@@ -311,27 +300,17 @@ export default function DesktopConnect() {
     e.preventDefault()
     if (!aiSearchQuery.trim()) return
     const apiKey = aiApiKeys[aiProvider]
-    if (!apiKey) {
-      setError('AI 검색을 사용하려면 설정에서 API Key를 먼저 등록해야 합니다.')
-      return
-    }
+    if (!apiKey) { setError('AI 검색을 사용하려면 설정에서 API Key를 먼저 등록해야 합니다.'); return }
     
     setIsAiSearching(true)
     setError(null)
     setLocalSearch('')
     try {
-      // [MODIFIED] 하위 폴더 재귀 검색 + 3000곡 제한
-      const audioFiles = await searchAudioFilesRecursive(
-        currentFolder.id, '', allowedExts, 3000
-      )
-      
-      if (audioFiles.length === 0) {
-        setError('이 폴더와 하위 폴더에 음악 파일이 없습니다.')
-        return
-      }
+      const audioFiles = await searchAudioFilesRecursive(currentFolder.id, '', cachedAllowedExts, 3000)
+      if (audioFiles.length === 0) { setError('이 폴더와 하위 폴더에 음악 파일이 없습니다.'); return }
       
       const { recommendMusic } = await import('@/app/actions/ai')
-      const result = await recommendMusic(aiSearchQuery, audioFiles, apiKey, aiProvider)
+      const result = await recommendMusic(aiSearchQuery, audioFiles, apiKey, aiProvider, aiModels[aiProvider])
       if (result.songs && result.songs.length > 0) {
         setItems(result.songs)
       } else {
@@ -383,7 +362,7 @@ export default function DesktopConnect() {
       const folderIds = items.filter(i => i.mimeType === 'application/vnd.google-apps.folder').map(f => f.id)
       if (folderIds.length > 0) {
         setLoading(true)
-        const subFiles = await import('@/app/actions/library').then(m => m.getRandomAudioFilesFromFolders(folderIds, allowedExts, 200))
+        const subFiles = await import('@/app/actions/library').then(m => m.getRandomAudioFilesFromFolders(folderIds, cachedAllowedExts, 200))
         setLoading(false)
         if (subFiles.length > 0) {
           musicFiles = subFiles.map(f => ({
@@ -404,7 +383,7 @@ export default function DesktopConnect() {
       const folderIds = items.filter(i => i.mimeType === 'application/vnd.google-apps.folder').map(f => f.id)
       if (folderIds.length > 0) {
         setLoading(true)
-        const subFiles = await import('@/app/actions/library').then(m => m.getRandomAudioFilesFromFolders(folderIds, allowedExts, 200))
+        const subFiles = await import('@/app/actions/library').then(m => m.getRandomAudioFilesFromFolders(folderIds, cachedAllowedExts, 200))
         setLoading(false)
         if (subFiles.length > 0) {
           musicFiles = subFiles.map(f => ({
