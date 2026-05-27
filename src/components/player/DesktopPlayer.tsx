@@ -105,6 +105,42 @@ export default function DesktopPlayer() {
   const [expandedView, setExpandedView] = useState<'art' | 'lyrics' | 'queue' | 'eq'>('lyrics')
   const [sleepTimer, setSleepTimer] = useState(0)
   const [lyricsFontSize, setLyricsFontSize] = useState(18) // px, 10~50 range, step 4
+  
+  const handleTogglePlay = () => {
+    if (equalizerRef.current?.audioContext?.state === 'suspended') {
+      equalizerRef.current.audioContext.resume().catch(() => {})
+    }
+    // @ts-ignore
+    if (fallbackPlayerRef.current?.audioContext?.state === 'suspended') {
+      // @ts-ignore
+      fallbackPlayerRef.current.audioContext.resume().catch(() => {})
+    }
+    togglePlay()
+  }
+
+  // [FIX] AudioContext must be unlocked via user gesture
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (audioRef.current) {
+        const silentPlay = audioRef.current.play()
+        silentPlay?.then(() => { audioRef.current?.pause() }).catch(() => {})
+      }
+      if (equalizerRef.current?.audioContext?.state === 'suspended') {
+        equalizerRef.current.audioContext.resume().catch(() => {})
+      }
+      // @ts-ignore
+      if (fallbackPlayerRef.current?.audioContext?.state === 'suspended') {
+        // @ts-ignore
+        fallbackPlayerRef.current.audioContext.resume().catch(() => {})
+      }
+    }
+    document.addEventListener('touchstart', unlockAudio, { passive: true })
+    document.addEventListener('click', unlockAudio, { passive: true })
+    return () => {
+      document.removeEventListener('touchstart', unlockAudio)
+      document.removeEventListener('click', unlockAudio)
+    }
+  }, [])
 
   // [FIX] Cleanup fallback player
   const cleanupFallback = () => {
@@ -479,8 +515,8 @@ export default function DesktopPlayer() {
     }
     navigator.mediaSession.metadata = new MediaMetadata({ title, artist, album, artwork })
     try {
-      navigator.mediaSession.setActionHandler('play', () => togglePlay())
-      navigator.mediaSession.setActionHandler('pause', () => togglePlay())
+      navigator.mediaSession.setActionHandler('play', () => handleTogglePlay())
+      navigator.mediaSession.setActionHandler('pause', () => handleTogglePlay())
       navigator.mediaSession.setActionHandler('previoustrack', () => handlePrevWrapped())
       navigator.mediaSession.setActionHandler('nexttrack', () => handleNextWrapped())
       navigator.mediaSession.setActionHandler('seekto', (d) => {
@@ -519,8 +555,8 @@ export default function DesktopPlayer() {
         ] : []
       })
 
-      navigator.mediaSession.setActionHandler('play', () => { togglePlay() })
-      navigator.mediaSession.setActionHandler('pause', () => { togglePlay() })
+      navigator.mediaSession.setActionHandler('play', () => { handleTogglePlay() })
+      navigator.mediaSession.setActionHandler('pause', () => { handleTogglePlay() })
       navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev() })
       navigator.mediaSession.setActionHandler('nexttrack', () => { playNext() })
     }
@@ -589,7 +625,7 @@ export default function DesktopPlayer() {
               <Icon.SkipBack size={20} fill="currentColor" />
             </button>
             <button 
-              onClick={togglePlay}
+              onClick={handleTogglePlay}
               className="w-10 h-10 flex items-center justify-center bg-[var(--primary)] text-[var(--on-primary)] rounded-full hover:scale-105 active:scale-95 transition-all shadow-[var(--shadow-ambient)]"
             >
               {isPlaying ? <Icon.Pause size={18} fill="currentColor" /> : <Icon.Play size={18} fill="currentColor" className="ml-0.5" />}

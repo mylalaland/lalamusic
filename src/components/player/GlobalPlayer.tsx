@@ -59,25 +59,39 @@ export default function GlobalPlayer() {
   const [isSeeking, setIsSeeking] = useState(false)
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off')
   const [sleepTimer, setSleepTimer] = useState<number>(0)
-  const audioContextUnlockedRef = useRef(false)
+  
+  const handleTogglePlay = () => {
+    if (equalizerRef.current?.audioContext?.state === 'suspended') {
+      equalizerRef.current.audioContext.resume().catch(() => {})
+    }
+    // @ts-ignore
+    if (fallbackPlayerRef.current?.audioContext?.state === 'suspended') {
+      // @ts-ignore
+      fallbackPlayerRef.current.audioContext.resume().catch(() => {})
+    }
+    togglePlay()
+  }
 
   // [FIX] iOS Safari: AudioContext must be unlocked via user gesture
   useEffect(() => {
     console.log("GlobalPlayer Mounted")
     const unlockAudio = () => {
-      if (audioContextUnlockedRef.current) return
       // Create a silent buffer and play it to unlock iOS audio
       if (audioRef.current) {
         const silentPlay = audioRef.current.play()
         silentPlay?.then(() => { audioRef.current?.pause() }).catch(() => {})
       }
       if (equalizerRef.current?.audioContext?.state === 'suspended') {
-        equalizerRef.current.audioContext.resume()
+        equalizerRef.current.audioContext.resume().catch(() => {})
       }
-      audioContextUnlockedRef.current = true
+      // @ts-ignore
+      if (fallbackPlayerRef.current?.audioContext?.state === 'suspended') {
+        // @ts-ignore
+        fallbackPlayerRef.current.audioContext.resume().catch(() => {})
+      }
     }
-    document.addEventListener('touchstart', unlockAudio, { once: true })
-    document.addEventListener('click', unlockAudio, { once: true })
+    document.addEventListener('touchstart', unlockAudio, { passive: true })
+    document.addEventListener('click', unlockAudio, { passive: true })
     return () => {
       document.removeEventListener('touchstart', unlockAudio)
       document.removeEventListener('click', unlockAudio)
@@ -513,8 +527,8 @@ export default function GlobalPlayer() {
     }
     navigator.mediaSession.metadata = new MediaMetadata({ title, artist, album, artwork })
     try {
-      navigator.mediaSession.setActionHandler('play', () => togglePlay())
-      navigator.mediaSession.setActionHandler('pause', () => togglePlay())
+      navigator.mediaSession.setActionHandler('play', () => handleTogglePlay())
+      navigator.mediaSession.setActionHandler('pause', () => handleTogglePlay())
       navigator.mediaSession.setActionHandler('previoustrack', () => handlePrevWrapped())
       navigator.mediaSession.setActionHandler('nexttrack', () => handleNextWrapped())
       navigator.mediaSession.setActionHandler('seekto', (details) => {
@@ -636,7 +650,7 @@ export default function GlobalPlayer() {
             </div>
             {/* 컨트롤 */}
             <div className="flex items-center gap-2 pr-1">
-              <button onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="w-10 h-10 flex items-center justify-center text-[var(--tertiary)] hover:text-[var(--primary)] transition-colors active:scale-90">
+              <button onClick={(e) => { e.stopPropagation(); handleTogglePlay(); }} className="w-10 h-10 flex items-center justify-center text-[var(--tertiary)] hover:text-[var(--primary)] transition-colors active:scale-90">
                 {isPlaying ? <Icon.Pause size={24} fill="currentColor" /> : <Icon.Play size={24} fill="currentColor" />}
               </button>
               <button onClick={(e) => { e.stopPropagation(); handleNextWrapped(); }} className="w-8 h-8 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors active:scale-90">
@@ -859,7 +873,7 @@ export default function GlobalPlayer() {
                   <button onClick={handlePrevWrapped} className="w-14 h-14 flex items-center justify-center text-[var(--primary)] hover:text-[var(--tertiary)] transition-all active:scale-90 bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-full shadow-sm">
                     <Icon.SkipBack size={24} fill="currentColor" />
                   </button>
-                  <button onClick={togglePlay} className="w-20 h-20 flex items-center justify-center text-[var(--on-primary)] bg-[var(--primary)] hover:scale-105 transition-all active:scale-95 rounded-full shadow-[var(--shadow-ambient)]"
+                   <button onClick={handleTogglePlay} className="w-20 h-20 flex items-center justify-center text-[var(--on-primary)] bg-[var(--primary)] hover:scale-105 transition-all active:scale-95 rounded-full shadow-[var(--shadow-ambient)]"
                   >
                     {isPlaying ? <Icon.Pause size={36} fill="currentColor" /> : <Icon.Play size={36} fill="currentColor" className="ml-1" />}
                   </button>

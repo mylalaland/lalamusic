@@ -56,6 +56,50 @@ export default function SettingsPage() {
   const [isFetchingModels, setIsFetchingModels] = useState(false)
   const [user, setUser] = useState<any>(null)
 
+  const handleSaveAndAutoTest = async () => {
+    if (!apiKeyInput.trim()) {
+      showToast('API Key를 입력해주세요.')
+      return
+    }
+
+    // 1. API 키 저장
+    setAiApiKey(aiProvider, apiKeyInput.trim())
+    showToast('🔑 키 저장 완료! 모델 조회 중...')
+    setIsFetchingModels(true)
+
+    try {
+      // 2. FETCH MODELS 실행
+      const { fetchAvailableModels } = await import('@/app/actions/ai')
+      const models = await fetchAvailableModels(apiKeyInput.trim(), aiProvider)
+      
+      if (models && models.length > 0) {
+        setFetchedModels(models)
+        // 첫 번째 최신 모델을 자동 선택
+        const defaultModel = models[0].id
+        setAiModel(aiProvider, defaultModel)
+        
+        showToast(`✨ ${models.length}개 모델 발견! 연결 테스트 중...`)
+        
+        // 3. TEST CONNECTION 실행
+        const { testAIConnection } = await import('@/app/actions/ai')
+        const result = await testAIConnection(apiKeyInput.trim(), aiProvider, defaultModel)
+        
+        if (result.success) {
+          showToast(`✅ 연결 성공: ${result.message}`)
+        } else {
+          // 실패 시 자세한 상세 에러 알림
+          alert(`❌ AI 연결 테스트 실패\n\n[오류 설명]: ${result.message}\n\nAPI 키가 정확한지, 혹은 무료 할당량이 남아있는지 확인해주세요.`)
+        }
+      } else {
+        alert(`❌ 모델 조회 실패\n\n해당 API 키로 사용 가능한 AI 모델을 가져오지 못했습니다. API 키가 올바른지 다시 한번 확인해주세요.`)
+      }
+    } catch (e: any) {
+      alert(`❌ 오류 발생\n\n상세 정보: ${e?.message || e}`)
+    } finally {
+      setIsFetchingModels(false)
+    }
+  }
+
   useEffect(() => {
     setApiKeyInput(aiApiKeys[aiProvider] || '')
   }, [aiProvider, aiApiKeys])
@@ -470,11 +514,11 @@ export default function SettingsPage() {
                 <label className="font-['Work_Sans'] text-[9px] text-[var(--tertiary)] tracking-[0.3em] uppercase block mb-3">SELECT_MODEL</label>
                 
                 {/* 현재 선택된 모델 표시 */}
-                <div className="flex gap-2 mb-2">
+                <div className="flex flex-col gap-2 mb-2">
                   <select 
                     value={aiModels[aiProvider]} 
                     onChange={(e) => setAiModel(aiProvider, e.target.value)}
-                    className="flex-1 py-2.5 px-3 font-['Work_Sans'] text-sm text-[var(--text-main)] outline-none border border-[var(--border-strong)] focus:border-[var(--tertiary)] transition"
+                    className="w-full py-2.5 px-3 font-['Work_Sans'] text-sm text-[var(--text-main)] outline-none border border-[var(--border-strong)] focus:border-[var(--tertiary)] transition"
                     style={{ background: 'var(--bg-container-highest)' }}>
                     {/* 동적 조회된 모델이 있으면 그걸 사용, 없으면 기본 목록 */}
                     {(fetchedModels.length > 0 ? fetchedModels : AI_MODELS[aiProvider] || []).map(m => (
@@ -502,8 +546,8 @@ export default function SettingsPage() {
                       }
                     }}
                     disabled={isFetchingModels}
-                    className="px-3 py-2.5 font-['Work_Sans'] text-[10px] tracking-wider font-bold text-[var(--tertiary)] border border-[var(--tertiary)]/30 hover:bg-[var(--tertiary)]/10 transition whitespace-nowrap disabled:opacity-50">
-                    {isFetchingModels ? '조회중...' : '🔍 FETCH'}
+                    className="w-full py-2.5 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--tertiary)] border border-[var(--tertiary)]/30 hover:bg-[var(--tertiary)]/10 transition disabled:opacity-50">
+                    {isFetchingModels ? '조회중...' : '🔍 FETCH AVAILABLE MODELS'}
                   </button>
                 </div>
                 {fetchedModels.length > 0 && (
@@ -524,7 +568,7 @@ export default function SettingsPage() {
                       className="w-full py-2.5 pl-9 pr-4 font-['Work_Sans'] text-sm text-[var(--text-main)] placeholder:text-[var(--text-muted)] outline-none border border-[var(--border-strong)] focus:border-[var(--tertiary)] transition"
                       style={{ background: 'var(--bg-container-highest)' }} />
                   </div>
-                  <button onClick={() => { setAiApiKey(aiProvider, apiKeyInput); showToast('SAVED ✓') }}
+                  <button onClick={handleSaveAndAutoTest}
                     className="px-4 py-2.5 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--on-primary)]"
                     style={{ background: 'var(--primary)' }}>
                     SAVE

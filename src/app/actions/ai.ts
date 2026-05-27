@@ -12,11 +12,26 @@ async function generateAIResponse(
   model?: string
 ): Promise<string> {
   if (provider === 'gemini') {
-    const { GoogleGenerativeAI } = await import('@google/generative-ai')
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const geminiModel = genAI.getGenerativeModel({ model: model || 'gemini-2.0-flash' })
-    const result = await geminiModel.generateContent(prompt)
-    return result.response.text()
+    try {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai')
+      const genAI = new GoogleGenerativeAI(apiKey)
+      const geminiModel = genAI.getGenerativeModel({ model: model || 'gemini-2.0-flash' })
+      const result = await geminiModel.generateContent(prompt)
+      return result.response.text()
+    } catch (e: any) {
+      console.error('[Gemini API Core Error]:', e)
+      const rawMsg = e.message || String(e)
+      if (rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('key is invalid') || rawMsg.includes('API key not valid') || rawMsg.includes('400')) {
+        throw new Error('API Key가 올바르지 않습니다. 공백이나 잘못된 문자가 포함되지 않았는지 다시 확인해주세요.')
+      }
+      if (rawMsg.includes('Quota exceeded') || rawMsg.includes('quota') || rawMsg.includes('429')) {
+        throw new Error('API 호출 할당량을 초과했습니다. 무료 등급 한도에 도달했거나 너무 자주 호출한 것 같습니다.')
+      }
+      if (rawMsg.includes('not found') || rawMsg.includes('not supported') || rawMsg.includes('404')) {
+        throw new Error(`요청한 모델(${model || 'gemini-2.0-flash'})을 찾을 수 없거나 현재 API Key 등급에서 사용할 수 없는 모델입니다.`)
+      }
+      throw new Error(`구글 API 오류 상세: ${rawMsg}`)
+    }
   } 
   
   if (provider === 'openai') {
