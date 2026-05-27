@@ -235,8 +235,17 @@ export default function DesktopPlayer() {
         audioRef.current.volume = isMuted ? 0 : volume
         retryCountRef.current = 0
         audioRef.current.load()
-        if ((track as any).initialPosition) audioRef.current.currentTime = (track as any).initialPosition
-        // We do NOT call play() here synchronously. We wait for onCanPlay mapping!
+        
+        const handleCanPlay = () => {
+          if ((track as any).initialPosition) {
+            if (audioRef.current) audioRef.current.currentTime = (track as any).initialPosition
+          }
+          if (isPlaying && audioRef.current) {
+            audioRef.current.play().catch((e) => console.warn('Desktop play blocked:', e))
+          }
+          audioRef.current?.removeEventListener('canplaythrough', handleCanPlay)
+        }
+        audioRef.current.addEventListener('canplaythrough', handleCanPlay)
       }
     }
 
@@ -262,9 +271,17 @@ export default function DesktopPlayer() {
       if (equalizerRef.current && equalizerRef.current.audioContext.state === 'suspended') {
         equalizerRef.current.audioContext.resume()
       }
-      audioRef.current.play().catch((e) => {
-         console.warn("Audio play blocked by browser:", e)
-      })
+      if (audioRef.current.readyState >= 2) {
+        audioRef.current.play().catch((e) => console.warn("Audio play blocked by browser:", e))
+      } else {
+        const onReady = () => {
+          if (isPlaying) {
+            audioRef.current?.play().catch(() => {})
+          }
+          audioRef.current?.removeEventListener('canplay', onReady)
+        }
+        audioRef.current.addEventListener('canplay', onReady)
+      }
     } else {
       audioRef.current.pause()
     }

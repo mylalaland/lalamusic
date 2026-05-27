@@ -306,7 +306,12 @@ export default function GlobalPlayer() {
       setIsFallbackMode(true)
       
       if (directAudioRef.current) {
-        directAudioRef.current.crossOrigin = "anonymous"
+        const isSameOrigin = newSrc.startsWith('blob:') || newSrc.startsWith('data:')
+        if (isSameOrigin) {
+          directAudioRef.current.crossOrigin = "anonymous"
+        } else {
+          directAudioRef.current.removeAttribute('crossorigin')
+        }
         directAudioRef.current.src = newSrc
         directAudioRef.current.playbackRate = playbackRate
         directAudioRef.current.volume = isMuted ? 0 : volume
@@ -329,7 +334,12 @@ export default function GlobalPlayer() {
     // Standard <audio> playback path
     setIsFallbackMode(false)
     if (audioRef.current) {
-      audioRef.current.crossOrigin = "anonymous"
+      const isSameOrigin = newSrc.startsWith('blob:') || newSrc.startsWith('data:')
+      if (isSameOrigin) {
+        audioRef.current.crossOrigin = "anonymous"
+      } else {
+        audioRef.current.removeAttribute('crossorigin')
+      }
       audioRef.current.src = newSrc
       audioRef.current.playbackRate = playbackRate
       audioRef.current.volume = isMuted ? 0 : volume
