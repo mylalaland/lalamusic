@@ -1,3 +1,5 @@
+import { getMediaAudioContext } from './sharedAudioCtx';
+
 export class Equalizer {
     public audioContext: AudioContext;
     public source: MediaElementAudioSourceNode;
@@ -6,14 +8,13 @@ export class Equalizer {
     public frequencies = [60, 230, 910, 3600, 14000];
 
     constructor(audioElement: HTMLAudioElement) {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        this.audioContext = new AudioCtx();
+        this.audioContext = getMediaAudioContext();
         
         // Ensure context is running (can be suspended by browser policies)
         if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
+            this.audioContext.resume().catch(() => {});
         }
-
+        
         this.source = this.audioContext.createMediaElementSource(audioElement);
         this.gainNode = this.audioContext.createGain();
         
@@ -53,12 +54,12 @@ export class Equalizer {
     }
 
     destroy() {
-        this.source?.disconnect();
-        this.filters?.forEach(filter => filter.disconnect());
-        // Do not close audioContext if it might be reused or if it is managed globally, 
-        // but here we instantiate it per EQ instance, so we can try to close it.
-        if (this.audioContext.state !== 'closed') {
-            this.audioContext.close().catch(console.error);
+        try {
+            this.source?.disconnect();
+            this.filters?.forEach(filter => filter.disconnect());
+            this.gainNode?.disconnect();
+        } catch (e) {
+            console.warn('Equalizer destroy failed:', e);
         }
     }
 }

@@ -8,6 +8,8 @@
  * and plays it through an AudioBufferSourceNode.
  */
 
+import { getFallbackAudioContext } from './sharedAudioCtx'
+
 export type FallbackState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'error'
 
 export class WebAudioFallbackPlayer {
@@ -32,8 +34,7 @@ export class WebAudioFallbackPlayer {
   public onDurationChange: ((duration: number) => void) | null = null
 
   constructor(existingContext?: AudioContext) {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
-    this.audioContext = existingContext || new AudioCtx()
+    this.audioContext = existingContext || getFallbackAudioContext()
     this.gainNode = this.audioContext.createGain()
     this.gainNode.connect(this.audioContext.destination)
   }

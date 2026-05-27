@@ -7,6 +7,7 @@ import { getExternalLyrics } from '@/app/actions/lyrics'
 import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
 import { WebAudioFallbackPlayer, needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
+import { unlockAllAudioContexts } from '@/lib/audio/sharedAudioCtx'
 import { 
   Play, Pause, SkipBack, SkipForward, ChevronDown, ListMusic, MoreHorizontal,
   Shuffle, Volume2, VolumeX, Mic2, Gauge, Repeat, Repeat1, Music, Moon, Settings2, Bookmark
@@ -61,14 +62,7 @@ export default function GlobalPlayer() {
   const [sleepTimer, setSleepTimer] = useState<number>(0)
   
   const handleTogglePlay = () => {
-    if (equalizerRef.current?.audioContext?.state === 'suspended') {
-      equalizerRef.current.audioContext.resume().catch(() => {})
-    }
-    // @ts-ignore
-    const fallbackCtx = fallbackPlayerRef.current?.audioContext
-    if (fallbackCtx && fallbackCtx.state === 'suspended') {
-      fallbackCtx.resume().catch(() => {})
-    }
+    unlockAllAudioContexts().catch(() => {})
     togglePlay()
   }
 
@@ -76,19 +70,13 @@ export default function GlobalPlayer() {
   useEffect(() => {
     console.log("GlobalPlayer Mounted")
     const unlockAudio = () => {
-      // Create a silent buffer and play it to unlock iOS audio
+      // Create a silent buffer and play it to unlock HTML5 audio
       if (audioRef.current) {
         const silentPlay = audioRef.current.play()
         silentPlay?.then(() => { audioRef.current?.pause() }).catch(() => {})
       }
-      if (equalizerRef.current?.audioContext?.state === 'suspended') {
-        equalizerRef.current.audioContext.resume().catch(() => {})
-      }
-      // @ts-ignore
-      const fallbackCtx = fallbackPlayerRef.current?.audioContext
-      if (fallbackCtx && fallbackCtx.state === 'suspended') {
-        fallbackCtx.resume().catch(() => {})
-      }
+      // Unlock all Shared AudioContexts (Media & Fallback)
+      unlockAllAudioContexts().catch(() => {})
     }
     document.addEventListener('touchstart', unlockAudio, { passive: true })
     document.addEventListener('click', unlockAudio, { passive: true })
@@ -354,10 +342,8 @@ export default function GlobalPlayer() {
         const handleCanPlay = () => {
           if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
           if (isPlaying) {
-            // Resume AudioContext if suspended (iOS requirement)
-            if (equalizerRef.current?.audioContext?.state === 'suspended') {
-              equalizerRef.current.audioContext.resume()
-            }
+            // Unlock all AudioContexts for iOS
+            unlockAllAudioContexts().catch(() => {})
             audioRef.current!.play().catch((e) => {
               console.warn('iOS play blocked:', e)
             })
@@ -380,11 +366,7 @@ export default function GlobalPlayer() {
   useEffect(() => {
     // [NEW] Fallback mode: sync play/pause with WebAudioFallbackPlayer
     if (isFallbackMode && fallbackPlayerRef.current) {
-      // @ts-ignore
-      const ctx = fallbackPlayerRef.current.audioContext
-      if (ctx && ctx.state === 'suspended') {
-        ctx.resume().catch(() => {})
-      }
+      unlockAllAudioContexts().catch(() => {})
       if (isPlaying) {
         fallbackPlayerRef.current.play()
       } else {
@@ -396,9 +378,7 @@ export default function GlobalPlayer() {
     if (!audioRef.current) return
     if (isPlaying) {
       // [FIX] iOS Safari: Always resume AudioContext before play
-      if (equalizerRef.current?.audioContext?.state === 'suspended') {
-        equalizerRef.current.audioContext.resume()
-      }
+      unlockAllAudioContexts().catch(() => {})
       // [FIX] Only play if audio has data (readyState >= HAVE_CURRENT_DATA)
       if (audioRef.current.readyState >= 2) {
         audioRef.current.play().catch((e) => {
@@ -892,31 +872,27 @@ export default function GlobalPlayer() {
                 </div>
 
                 {/* 하단 기능 버튼 */}
-                <div className="flex justify-between px-2 pb-4">
-                  <div className="flex items-center gap-6">
-                    <button onClick={() => setViewMode(viewMode === 'lyrics' ? 'art' : 'lyrics')} className={`flex flex-col items-center gap-1.5 p-2 transition-all ${viewMode === 'lyrics' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
-                      <Icon.Mic2 size={22} />
-                      <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase">Lyrics</span>
-                    </button>
-                    <button onClick={() => setViewMode(viewMode === 'eq' ? 'art' : 'eq')} className={`flex flex-col items-center gap-1.5 p-2 transition-all ${viewMode === 'eq' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
-                      <Icon.Settings2 size={22} />
-                      <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase">EQ</span>
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <button onClick={() => setIsShuffle(!isShuffle)} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${isShuffle ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
-                      <Icon.Shuffle size={20} />
-                      <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase">Shuffle</span>
-                    </button>
-                    <button onClick={toggleRepeat} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${repeatMode !== 'off' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
-                      {repeatMode === 'one' ? <Icon.Repeat1 size={20} /> : <Icon.Repeat size={20} />}
-                      <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase">Repeat</span>
-                    </button>
-                    <button onClick={() => setViewMode(viewMode === 'queue' ? 'art' : 'queue')} className={`flex flex-col items-center gap-1.5 p-2 transition-all ${viewMode === 'queue' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
-                      <Icon.ListMusic size={22} />
-                      <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase">Queue</span>
-                    </button>
-                  </div>
+                <div className="flex justify-between items-center w-full px-2 pb-4">
+                  <button onClick={() => setViewMode(viewMode === 'lyrics' ? 'art' : 'lyrics')} className={`flex-1 flex flex-col items-center gap-1.5 p-2 transition-all ${viewMode === 'lyrics' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+                    <Icon.Mic2 size={22} />
+                    <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">Lyrics</span>
+                  </button>
+                  <button onClick={() => setViewMode(viewMode === 'eq' ? 'art' : 'eq')} className={`flex-1 flex flex-col items-center gap-1.5 p-2 transition-all ${viewMode === 'eq' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+                    <Icon.Settings2 size={22} />
+                    <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">EQ</span>
+                  </button>
+                  <button onClick={() => setIsShuffle(!isShuffle)} className={`flex-1 flex flex-col items-center gap-1.5 p-2 transition-colors ${isShuffle ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+                    <Icon.Shuffle size={20} />
+                    <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">Shuffle</span>
+                  </button>
+                  <button onClick={toggleRepeat} className={`flex-1 flex flex-col items-center gap-1.5 p-2 transition-colors ${repeatMode !== 'off' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+                    {repeatMode === 'one' ? <Icon.Repeat1 size={20} /> : <Icon.Repeat size={20} />}
+                    <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">Repeat</span>
+                  </button>
+                  <button onClick={() => setViewMode(viewMode === 'queue' ? 'art' : 'queue')} className={`flex-1 flex flex-col items-center gap-1.5 p-2 transition-all ${viewMode === 'queue' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+                    <Icon.ListMusic size={22} />
+                    <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">Queue</span>
+                  </button>
                 </div>
               </div>
             </div>
