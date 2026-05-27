@@ -27,8 +27,9 @@ export default function FilesPage() {
     setLoading(true)
     try {
         const data = await getOfflineFiles()
-        // 최신순 정렬
-        setFiles(data.sort((a: any, b: any) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()))
+        // 실제 다운로드된 파일(blob)만 필터링 후 최신순 정렬 (메타데이터 캐시 제외)
+        const actualFiles = data.filter((f: any) => f.blob)
+        setFiles(actualFiles.sort((a: any, b: any) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()))
     } catch (e) {
         console.error(e)
     } finally {
