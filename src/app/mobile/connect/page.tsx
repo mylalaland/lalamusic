@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { recommendMusic } from '@/app/actions/ai'
 import { getScanSettings } from '@/app/actions/settings'
-import { getDriveContents, searchAudioFilesRecursive } from '@/app/actions/library'
+import { getDriveContents, searchAudioFilesRecursive, getRandomAudioFilesFromFolders } from '@/app/actions/library'
 import { analyzeMusicMetadata } from '@/app/actions/metadata'
 import { usePlayerStore } from '@/lib/store/usePlayerStore'
 import { useConnectStore } from '@/lib/store/useConnectStore'
@@ -158,19 +158,55 @@ export default function ConnectPage() {
     if (targetTrack) { setPlaylist(musicFiles); setTrack(targetTrack) }
   }
 
-  const handlePlayAll = () => {
-    const musicFiles = items.filter(isAudioFile).map(f => ({
+  const handlePlayAll = async () => {
+    let musicFiles = items.filter(isAudioFile).map(f => ({
       id: f.id, name: f.name, artist: 'Google Drive',
       thumbnailLink: f.thumbnailLink, src: f.id, mimeType: f.mimeType
     }))
+    
+    // 폴더에 음악이 없고 하위 폴더만 있으면 재귀 검색
+    if (musicFiles.length === 0) {
+      setLoading(true)
+      try {
+        const folders = items.filter(i => i.mimeType === 'application/vnd.google-apps.folder')
+        const results = await getRandomAudioFilesFromFolders(folders.map(f => f.id), cachedAllowedExts, 50)
+        musicFiles = results.map((f: any) => ({
+          id: f.id, name: f.name, artist: 'Google Drive',
+          thumbnailLink: f.thumbnailLink, src: f.id, mimeType: f.mimeType
+        }))
+      } catch (e) {
+        setErrorMsg('음악 로딩 실패')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
     if (musicFiles.length > 0) { setPlaylist(musicFiles); setTrack(musicFiles[0]) }
   }
 
-  const handleShuffleAll = () => {
-    const musicFiles = items.filter(isAudioFile).map(f => ({
+  const handleShuffleAll = async () => {
+    let musicFiles = items.filter(isAudioFile).map(f => ({
       id: f.id, name: f.name, artist: 'Google Drive',
       thumbnailLink: f.thumbnailLink, src: f.id, mimeType: f.mimeType
     }))
+
+    // 폴더에 음악이 없고 하위 폴더만 있으면 재귀 검색
+    if (musicFiles.length === 0) {
+      setLoading(true)
+      try {
+        const folders = items.filter(i => i.mimeType === 'application/vnd.google-apps.folder')
+        const results = await getRandomAudioFilesFromFolders(folders.map(f => f.id), cachedAllowedExts, 50)
+        musicFiles = results.map((f: any) => ({
+          id: f.id, name: f.name, artist: 'Google Drive',
+          thumbnailLink: f.thumbnailLink, src: f.id, mimeType: f.mimeType
+        }))
+      } catch (e) {
+        setErrorMsg('음악 로딩 실패')
+      } finally {
+        setLoading(false)
+      }
+    }
+
     if (musicFiles.length > 0) {
       const shuffled = [...musicFiles].sort(() => Math.random() - 0.5)
       setPlaylist(shuffled); setTrack(shuffled[0])
@@ -365,10 +401,10 @@ export default function ConnectPage() {
       {/* 컨텐츠 */}
       <div className={`p-2 ${viewMode === 'grid' ? 'grid grid-cols-3 gap-2' : 'space-y-0.5'}`}>
         {/* Play All */}
-        {!loading && audioCount > 0 && (
+        {!loading && items.length > 0 && (
           <div className="flex gap-2 mb-2 col-span-full">
             <button onClick={handlePlayAll} className="flex-1 py-2.5 bg-[var(--tertiary)]/10 text-[var(--tertiary)] rounded-xl font-bold hover:bg-[var(--tertiary)]/20 flex items-center justify-center gap-2 text-sm border border-[var(--tertiary)]/20">
-              <Icon.Play size={16} fill="currentColor"/> Play All ({audioCount})
+              <Icon.Play size={16} fill="currentColor"/> Play All {audioCount > 0 ? `(${audioCount})` : ''}
             </button>
             <button onClick={handleShuffleAll} className="w-12 bg-[var(--bg-container-high)] rounded-xl flex items-center justify-center text-[var(--text-muted)] border border-[var(--border-strong)]">
               <Icon.Shuffle size={18} />

@@ -118,10 +118,15 @@ export default function DesktopPlayer() {
     togglePlay()
   }
 
-  // [FIX] AudioContext must be unlocked via user gesture
+  // [FIX] AudioContext must be unlocked via user gesture (one-time only)
   useEffect(() => {
+    let unlocked = false
     const unlockAudio = () => {
-      if (audioRef.current) {
+      if (unlocked) return
+      unlocked = true
+
+      // Only do play→pause if audio is NOT already playing
+      if (audioRef.current && audioRef.current.paused) {
         const silentPlay = audioRef.current.play()
         silentPlay?.then(() => { audioRef.current?.pause() }).catch(() => {})
       }
@@ -133,6 +138,9 @@ export default function DesktopPlayer() {
         // @ts-ignore
         fallbackPlayerRef.current.audioContext.resume().catch(() => {})
       }
+
+      document.removeEventListener('touchstart', unlockAudio)
+      document.removeEventListener('click', unlockAudio)
     }
     document.addEventListener('touchstart', unlockAudio, { passive: true })
     document.addEventListener('click', unlockAudio, { passive: true })
@@ -296,10 +304,12 @@ export default function DesktopPlayer() {
     const initEQ = () => {
       if (!equalizerRef.current && audio) {
         // Skip EQ for cross-origin streams (will cause silent output)
+        // /api/stream URLs redirect to Google Drive → cross-origin, so skip EQ
         const src = audio.src || ''
-        const isSameOrigin = src.startsWith('blob:') || src.startsWith('data:') || src.startsWith(window.location.origin)
-        if (!isSameOrigin) {
-          console.log('[DesktopPlayer] Skipping EQ for cross-origin stream (would cause silence)')
+        const isSameOrigin = src.startsWith('blob:') || src.startsWith('data:')
+        const isStreamProxy = src.includes('/api/stream')
+        if (!isSameOrigin || isStreamProxy) {
+          console.log('[DesktopPlayer] Skipping EQ for cross-origin/stream-proxy (would cause silence)')
           // Ensure volume is controlled directly on the audio element
           const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
           audio.volume = effectiveVolume

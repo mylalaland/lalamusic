@@ -55,6 +55,7 @@ export default function SettingsPage() {
   const [fetchedModels, setFetchedModels] = useState<{id: string, label: string}[]>([])
   const [isFetchingModels, setIsFetchingModels] = useState(false)
   const [user, setUser] = useState<any>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   const handleSaveAndAutoTest = async () => {
     if (!apiKeyInput.trim()) {
@@ -64,6 +65,7 @@ export default function SettingsPage() {
 
     // 1. API 키 저장
     setAiApiKey(aiProvider, apiKeyInput.trim())
+    setAiError(null)
     showToast('🔑 키 저장 완료! 모델 조회 중...')
     setIsFetchingModels(true)
 
@@ -87,14 +89,13 @@ export default function SettingsPage() {
         if (result.success) {
           showToast(`✅ 연결 성공: ${result.message}`)
         } else {
-          // 실패 시 자세한 상세 에러 알림
-          alert(`❌ AI 연결 테스트 실패\n\n[오류 설명]: ${result.message}\n\nAPI 키가 정확한지, 혹은 무료 할당량이 남아있는지 확인해주세요.`)
+          setAiError(`연결 테스트 실패: ${result.message}\nAPI 키가 정확한지, 혹은 무료 할당량이 남아있는지 확인해주세요.`)
         }
       } else {
-        alert(`❌ 모델 조회 실패\n\n해당 API 키로 사용 가능한 AI 모델을 가져오지 못했습니다. API 키가 올바른지 다시 한번 확인해주세요.`)
+        setAiError('모델 조회 실패: 해당 API 키로 사용 가능한 AI 모델을 가져오지 못했습니다.')
       }
     } catch (e: any) {
-      alert(`❌ 오류 발생\n\n상세 정보: ${e?.message || e}`)
+      setAiError(`오류 발생: ${e?.message || e}`)
     } finally {
       setIsFetchingModels(false)
     }
@@ -547,7 +548,7 @@ export default function SettingsPage() {
                     }}
                     disabled={isFetchingModels}
                     className="w-full py-2.5 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--tertiary)] border border-[var(--tertiary)]/30 hover:bg-[var(--tertiary)]/10 transition disabled:opacity-50">
-                    {isFetchingModels ? '조회중...' : '🔍 FETCH AVAILABLE MODELS'}
+                    {isFetchingModels ? '조회중...' : '🔍 FETCH'}
                   </button>
                 </div>
                 {fetchedModels.length > 0 && (
@@ -580,18 +581,33 @@ export default function SettingsPage() {
                   onClick={async () => {
                     const key = apiKeyInput || aiApiKeys[aiProvider]
                     if (!key) { showToast('API Key를 먼저 입력하세요'); return }
+                    setAiError(null)
                     showToast('테스트 중...')
                     try {
                       const { testAIConnection } = await import('@/app/actions/ai')
                       const result = await testAIConnection(key, aiProvider, aiModels[aiProvider])
-                      showToast(result.success ? `✅ ${result.message}` : `❌ ${result.message}`)
+                      if (result.success) {
+                        showToast(`✅ ${result.message}`)
+                      } else {
+                        setAiError(`연결 실패: ${result.message}`)
+                      }
                     } catch (e: any) {
-                      showToast(`❌ ${e?.message || '테스트 실패'}`)
+                      setAiError(`테스트 오류: ${e?.message || '알 수 없는 오류'}`)
                     }
                   }}
                   className="w-full py-2.5 mb-3 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--tertiary)] border border-[var(--tertiary)]/30 hover:bg-[var(--tertiary)]/10 transition flex items-center justify-center gap-2">
                   <Zap size={14} /> TEST_CONNECTION
                 </button>
+
+                {/* Persistent AI Error Display */}
+                {aiError && (
+                  <div className="mb-3 p-3 border border-red-500/30 bg-red-500/5 rounded-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-['Work_Sans'] text-xs text-red-400 leading-relaxed whitespace-pre-wrap">❌ {aiError}</p>
+                      <button onClick={() => setAiError(null)} className="text-red-400 shrink-0 mt-0.5"><XCircle size={14} /></button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Provider Guide */}
                 <div className="p-3 border border-[var(--border-strong)]" style={{ background: 'var(--bg-container-highest)' }}>

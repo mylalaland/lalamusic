@@ -7,7 +7,7 @@ import {
   Settings as SettingsIcon, LogOut, Disc3,
   User, ChevronRight, Palette, Wand2, Key, Zap,
   MapPin, FolderSearch, Folder, FileAudio, CheckSquare, Square,
-  Mic2, ArrowUp, ArrowDown, Database, Trash2, RefreshCw, ListMusic, Save, Search, CheckCircle2
+  Mic2, ArrowUp, ArrowDown, Database, Trash2, RefreshCw, ListMusic, Save, Search, CheckCircle2, XCircle
 } from 'lucide-react'
 import { useSettingsStore, type AIProvider, AI_MODELS } from '@/lib/store/useSettingsStore'
 import {
@@ -32,6 +32,7 @@ export default function DesktopSettings() {
   const [fetchedModels, setFetchedModels] = useState<{id: string, label: string}[]>([])
   const [isFetchingModels, setIsFetchingModels] = useState(false)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   const handleSaveAndAutoTest = async () => {
     if (!apiKeyInput.trim()) {
@@ -41,6 +42,7 @@ export default function DesktopSettings() {
 
     // 1. API 키 저장
     setAiApiKey(aiProvider, apiKeyInput.trim())
+    setAiError(null)
     flashSave('🔑 키 저장 완료! 모델 조회 중...')
     setIsFetchingModels(true)
 
@@ -64,14 +66,13 @@ export default function DesktopSettings() {
         if (result.success) {
           flashSave(`✅ 연결 성공: ${result.message}`)
         } else {
-          // 실패 시 자세한 상세 에러 알림
-          alert(`❌ AI 연결 테스트 실패\n\n[오류 설명]: ${result.message}\n\nAPI 키가 정확한지, 혹은 무료 할당량이 남아있는지 확인해주세요.`)
+          setAiError(`연결 테스트 실패: ${result.message}\nAPI 키가 정확한지, 혹은 무료 할당량이 남아있는지 확인해주세요.`)
         }
       } else {
-        alert(`❌ 모델 조회 실패\n\n해당 API 키로 사용 가능한 AI 모델을 가져오지 못했습니다. API 키가 올바른지 다시 한번 확인해주세요.`)
+        setAiError('모델 조회 실패: 해당 API 키로 사용 가능한 AI 모델을 가져오지 못했습니다.')
       }
     } catch (e: any) {
-      alert(`❌ 오류 발생\n\n상세 정보: ${e?.message || e}`)
+      setAiError(`오류 발생: ${e?.message || e}`)
     } finally {
       setIsFetchingModels(false)
     }
@@ -388,6 +389,7 @@ export default function DesktopSettings() {
                         const key = apiKeyInput.trim()
                         if (!key) { flashSave('API Key를 입력해주세요.'); return }
                         setAiApiKey(aiProvider, key)
+                        setAiError(null)
                         setIsFetchingModels(true)
                         flashSave('🔑 키 저장 완료! 모델 조회 중...')
                         try {
@@ -403,7 +405,7 @@ export default function DesktopSettings() {
                             flashSave('❌ 사용 가능한 모델이 없습니다')
                           }
                         } catch (e: any) {
-                          flashSave(`❌ ${e?.message || '모델 조회 실패'}`)
+                          setAiError(`오류 발생: ${e?.message || '모델 조회 실패'}`)
                         } finally {
                           setIsFetchingModels(false)
                         }
@@ -493,6 +495,7 @@ export default function DesktopSettings() {
                   onClick={async () => {
                     const key = apiKeyInput || aiApiKeys[aiProvider]
                     if (!key) { flashSave('API Key를 먼저 입력하세요'); return }
+                    setAiError(null)
                     flashSave('테스트 중...')
                     try {
                       const { testAIConnection } = await import('@/app/actions/ai')
@@ -500,16 +503,26 @@ export default function DesktopSettings() {
                       if (result.success) {
                         flashSave(`✅ ${result.message}`)
                       } else {
-                        alert(`❌ AI 연결 테스트 실패\n\n[오류 설명]: ${result.message}\n\nAPI 키가 정확한지, 혹은 무료 할당량이 남아있는지 확인해주세요.`)
+                        setAiError(`연결 테스트 실패: ${result.message}\nAPI 키가 정확한지, 혹은 무료 할당량이 남아있는지 확인해주세요.`)
                       }
                     } catch (e: any) {
-                      flashSave(`❌ ${e?.message || '테스트 실패'}`)
+                      setAiError(`테스트 오류: ${e?.message || '테스트 실패'}`)
                     }
                   }}
-                  className="w-full py-3 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--on-primary)] transition-all flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.99]"
+                  className="w-full py-3 font-['Work_Sans'] text-xs tracking-wider font-bold text-[var(--on-primary)] transition-all flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.99] mb-4"
                   style={{ background: 'linear-gradient(135deg, var(--primary), var(--tertiary))' }}>
                   <Zap size={14} /> TEST_CONNECTION
                 </button>
+
+                {/* Persistent AI Error Display */}
+                {aiError && (
+                  <div className="p-4 border border-red-500/30 bg-red-500/5 rounded-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-['Work_Sans'] text-sm text-red-400 leading-relaxed whitespace-pre-wrap">❌ {aiError}</p>
+                      <button onClick={() => setAiError(null)} className="text-red-400 shrink-0 mt-0.5 hover:text-red-300 transition"><XCircle size={16} /></button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
