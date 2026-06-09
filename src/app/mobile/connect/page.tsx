@@ -170,7 +170,7 @@ export default function ConnectPage() {
       try {
         const folders = items.filter(i => i.mimeType === 'application/vnd.google-apps.folder')
         const results = await getRandomAudioFilesFromFolders(folders.map(f => f.id), cachedAllowedExts, 50)
-        musicFiles = results.map((f: any) => ({
+        musicFiles = results.filter(isAudioFile).map((f: any) => ({
           id: f.id, name: f.name, artist: 'Google Drive',
           thumbnailLink: f.thumbnailLink, src: f.id, mimeType: f.mimeType
         }))
@@ -196,7 +196,7 @@ export default function ConnectPage() {
       try {
         const folders = items.filter(i => i.mimeType === 'application/vnd.google-apps.folder')
         const results = await getRandomAudioFilesFromFolders(folders.map(f => f.id), cachedAllowedExts, 50)
-        musicFiles = results.map((f: any) => ({
+        musicFiles = results.filter(isAudioFile).map((f: any) => ({
           id: f.id, name: f.name, artist: 'Google Drive',
           thumbnailLink: f.thumbnailLink, src: f.id, mimeType: f.mimeType
         }))

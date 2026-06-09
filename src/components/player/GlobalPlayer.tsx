@@ -60,6 +60,7 @@ export default function GlobalPlayer() {
   const [isSeeking, setIsSeeking] = useState(false)
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off')
   const [sleepTimer, setSleepTimer] = useState<number>(0)
+  const [showFullTitle, setShowFullTitle] = useState(false)
   
   const handleTogglePlay = () => {
     unlockAllAudioContexts().catch(() => {})
@@ -761,8 +762,8 @@ export default function GlobalPlayer() {
                   </div>
                 ) : (
                   /* ===== C. 앨범 아트 ===== */
-                  <div className="w-full h-full flex items-center justify-center p-4">
-                    <div className="relative group" style={{ width: 'min(85vw, 50vh)' }}>
+                  <div className="w-full h-full flex items-center justify-center p-4 landscape:p-1">
+                    <div className="relative group w-[min(85vw,50vh)] landscape:w-[min(60vw,65vh)]">
                       {/* 메인 아트 */}
                       <div className="aspect-square w-full bg-[var(--bg-container)] border border-[var(--border-strong)] overflow-hidden relative shadow-[var(--shadow-ambient)] rounded-md">
                         {displayArt ? (
@@ -794,19 +795,22 @@ export default function GlobalPlayer() {
               </div>
 
               {/* ===== 하단 컨트롤 영역 ===== */}
-              <div className="shrink-0 flex flex-col justify-end">
+              <div className="shrink-0 flex flex-col justify-end landscape:gap-0">
                 {/* 곡 정보 */}
-                <div className="mb-4 px-1">
+                <div className="mb-4 landscape:mb-1 px-1">
                   <div className="flex justify-between items-center">
-                    <div className="flex-1 min-w-0 mr-4">
-                      <h2 className="font-['Noto_Serif'] text-2xl font-bold text-[var(--text-main)] mb-1 truncate tracking-tight">{displayTitle}</h2>
+                    <div 
+                      className="flex-1 min-w-0 mr-4 cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); setShowFullTitle(!showFullTitle); }}
+                    >
+                      <h2 className={`font-['Noto_Serif'] text-2xl font-bold text-[var(--text-main)] mb-1 tracking-tight ${showFullTitle ? 'break-words whitespace-normal' : 'truncate'}`}>{displayTitle}</h2>
                       <p className="font-['Work_Sans'] text-sm text-[var(--tertiary)] truncate tracking-wider font-medium uppercase">{track.artist || 'Unknown Artist'}</p>
                     </div>
                     <button 
                       onClick={async (e) => { 
                         e.stopPropagation();
                         if(audioRef.current) {
-                          const res = await addBookmark(track.id, audioRef.current.currentTime);
+                          const res = await addBookmark(track, audioRef.current.currentTime);
                           if (res.success) alert('북마크가 저장되었습니다!');
                           else alert('저장 실패: ' + res.error);
                         }
@@ -819,7 +823,7 @@ export default function GlobalPlayer() {
                 </div>
 
                 {/* 진행 바 */}
-                <div className="w-full mb-6 group relative px-1">
+                <div className="w-full mb-6 landscape:mb-2 group relative px-1">
                   <input 
                     type="range" min={0} max={validDuration || 100} step="any"
                     value={currentTime} 
@@ -837,11 +841,11 @@ export default function GlobalPlayer() {
                 </div>
 
                 {/* 메인 컨트롤 */}
-                <div className="flex items-center justify-center gap-10 mb-8">
-                  <button onClick={handlePrevWrapped} className="w-14 h-14 flex items-center justify-center text-[var(--primary)] hover:text-[var(--tertiary)] transition-all active:scale-90 bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-full shadow-sm">
+                <div className="flex items-center justify-center gap-10 landscape:gap-8 mb-8 landscape:mb-2">
+                  <button onClick={handlePrevWrapped} className="w-14 h-14 landscape:w-12 landscape:h-12 flex items-center justify-center text-[var(--primary)] hover:text-[var(--tertiary)] transition-all active:scale-90 bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-full shadow-sm">
                     <Icon.SkipBack size={24} fill="currentColor" />
                   </button>
-                   <button onClick={handleTogglePlay} className="w-20 h-20 flex items-center justify-center text-[var(--on-primary)] bg-[var(--primary)] hover:scale-105 transition-all active:scale-95 rounded-full shadow-[var(--shadow-ambient)]"
+                   <button onClick={handleTogglePlay} className="w-20 h-20 landscape:w-16 landscape:h-16 flex items-center justify-center text-[var(--on-primary)] bg-[var(--primary)] hover:scale-105 transition-all active:scale-95 rounded-full shadow-[var(--shadow-ambient)]"
                   >
                     {isPlaying ? <Icon.Pause size={36} fill="currentColor" /> : <Icon.Play size={36} fill="currentColor" className="ml-1" />}
                   </button>
@@ -851,7 +855,7 @@ export default function GlobalPlayer() {
                 </div>
 
                 {/* 하단 기능 버튼 */}
-                <div className="flex justify-between items-center w-full px-2 pb-4">
+                <div className="flex justify-between items-center w-full px-2 pb-4 landscape:pb-0">
                   <button onClick={() => setViewMode(viewMode === 'lyrics' ? 'art' : 'lyrics')} className={`flex-1 flex flex-col items-center gap-1.5 p-2 transition-all ${viewMode === 'lyrics' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
                     <Icon.Mic2 size={22} />
                     <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">Lyrics</span>

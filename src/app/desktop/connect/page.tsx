@@ -335,17 +335,15 @@ export default function DesktopConnect() {
     }
   }
 
+  const isAudioFile = (item: any) => 
+    item.mimeType?.includes('audio') || /\.(mp3|flac|m4a|wav|aac|ogg|opus|wma)$/i.test(item.name || '')
+
   const handleNavigate = (folder: {id: string, name: string}) => {
     setPath([...path, folder])
   }
 
   const buildMusicFiles = (): MusicFile[] => {
-    return items.filter(i => {
-      const isAudioMime = i.mimeType?.includes('audio')
-      const isAudioExt = i.name && /\.(mp3|flac|m4a|wav|aac|ogg)$/i.test(i.name)
-      const isOctet = i.mimeType === 'application/octet-stream'
-      return isAudioMime || isAudioExt || (isOctet && i.name && /\.(mp3|flac|m4a|wav|aac)$/i.test(i.name))
-    }).map(f => ({
+    return items.filter(isAudioFile).map(f => ({
       id: f.id, name: f.name, artist: 'Google Drive', 
       thumbnailLink: f.thumbnailLink, src: f.id, mimeType: f.mimeType
     }))
@@ -375,7 +373,7 @@ export default function DesktopConnect() {
         const subFiles = await import('@/app/actions/library').then(m => m.getRandomAudioFilesFromFolders(folderIds, cachedAllowedExts, 200))
         setLoading(false)
         if (subFiles.length > 0) {
-          musicFiles = subFiles.map(f => ({
+          musicFiles = subFiles.filter(isAudioFile).map((f: any) => ({
             id: f.id as string, name: (f.name as string) || 'Unknown', artist: 'Google Drive', 
             thumbnailLink: f.thumbnailLink, src: f.id as string, mimeType: (f.mimeType as string) || ''
           }))
@@ -396,7 +394,7 @@ export default function DesktopConnect() {
         const subFiles = await import('@/app/actions/library').then(m => m.getRandomAudioFilesFromFolders(folderIds, cachedAllowedExts, 200))
         setLoading(false)
         if (subFiles.length > 0) {
-          musicFiles = subFiles.map(f => ({
+          musicFiles = subFiles.filter(isAudioFile).map((f: any) => ({
             id: f.id as string, name: (f.name as string) || 'Unknown', artist: 'Google Drive', 
             thumbnailLink: f.thumbnailLink, src: f.id as string, mimeType: (f.mimeType as string) || ''
           }))
