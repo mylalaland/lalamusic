@@ -638,7 +638,7 @@ export default function GlobalPlayer() {
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
             drag="y" dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 0.2 }} onDragEnd={handleDragEnd}
             onTouchStart={handlePlayerTouchStart} onTouchEnd={handlePlayerTouchEnd}
-            className="fixed top-0 left-0 w-full h-[100dvh] z-[100] flex flex-col pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] touch-none overflow-hidden analog-surface"
+            className="fixed top-0 left-0 w-full h-[100dvh] z-[100] flex flex-col pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] touch-none overflow-hidden analog-surface"
           >
             {/* 배경 텍스처 */}
             <div className="absolute inset-0 pointer-events-none">
@@ -657,10 +657,10 @@ export default function GlobalPlayer() {
               </button>
             </div>
 
-            <div className="flex-1 flex flex-col px-6 pt-2 pb-4 overflow-hidden relative z-10 justify-between">
+            <div className="flex-1 flex flex-col landscape:flex-row px-6 pt-2 pb-4 overflow-hidden relative z-10 justify-between">
                
               {/* ===== 메인 콘텐츠 영역 ===== */}
-              <div className="flex-1 flex flex-col justify-center min-h-0 mb-4 relative">
+              <div className="flex-1 flex flex-col justify-center min-h-0 mb-4 landscape:mb-0 landscape:mr-6 relative">
                 {viewMode === 'queue' ? (
                   /* ===== A. 대기열 ===== */
                   <div className="w-full h-full overflow-y-auto space-y-1.5 py-2 analog-scrollbar">
@@ -763,7 +763,7 @@ export default function GlobalPlayer() {
                 ) : (
                   /* ===== C. 앨범 아트 ===== */
                   <div className="w-full h-full flex items-center justify-center p-4 landscape:p-1">
-                    <div className="relative group w-[min(85vw,50vh)] landscape:w-[min(60vw,65vh)]">
+                    <div className="relative group w-[min(85vw,50vh)] landscape:w-[min(85vh,40vw)] landscape:h-[min(85vh,40vw)]">
                       {/* 메인 아트 */}
                       <div className="aspect-square w-full bg-[var(--bg-container)] border border-[var(--border-strong)] overflow-hidden relative shadow-[var(--shadow-ambient)] rounded-md">
                         {displayArt ? (
@@ -795,7 +795,7 @@ export default function GlobalPlayer() {
               </div>
 
               {/* ===== 하단 컨트롤 영역 ===== */}
-              <div className="shrink-0 flex flex-col justify-end landscape:gap-0">
+              <div className="shrink-0 flex flex-col justify-end landscape:justify-center landscape:w-1/2 landscape:gap-2">
                 {/* 곡 정보 */}
                 <div className="mb-4 landscape:mb-1 px-1">
                   <div className="flex justify-between items-center">
