@@ -333,26 +333,37 @@ export default function GlobalPlayer() {
           return // 스트리밍 시작하지 않음
         }
 
-        // [NEW] Google Drive에서 직접 다운로드 (Vercel 경유 안 함)
-        try {
-          setLoadProgress(0)
-          newSrc = await preloadTrack(track.id, track.id, {
-            onProgress: (pct) => {
-              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(pct)
-            }
-          })
-          // 다운로드 완료 → 1.0 유지 후 1.5초 뒤 fade out
-          if (metaTrackIdRef.current === thisTrackId) {
-            setLoadProgress(1.0)
-            setTimeout(() => {
-              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(null)
-            }, 1500)
-          }
-        } catch (e) {
-          console.warn('[GlobalPlayer] Preloader failed, falling back to /api/stream:', e)
-          // 프리로더 실패 시 기존 프록시 폴백
+        // [FIX] FLAC/대용량 파일은 preloader 전체 다운 대신 직접 스트리밍 → 즉시 재생
+        const fileName = (track.name || track.title || '').toLowerCase()
+        const isLargeFormat = fileName.endsWith('.flac') || fileName.endsWith('.wav') || 
+          (track.mimeType && (track.mimeType.includes('flac') || track.mimeType.includes('wav')))
+
+        if (isLargeFormat) {
+          // 대용량 포맷: /api/stream으로 직접 스트리밍 (브라우저가 버퍼링 관리)
+          console.log('[GlobalPlayer] Large format detected, using stream proxy for:', fileName)
           newSrc = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
           setLoadProgress(null)
+        } else {
+          // MP3/AAC 등 소용량: preloader로 전체 다운 → 빠른 곡 전환
+          try {
+            setLoadProgress(0)
+            newSrc = await preloadTrack(track.id, track.id, {
+              onProgress: (pct) => {
+                if (metaTrackIdRef.current === thisTrackId) setLoadProgress(pct)
+              }
+            })
+            // 다운로드 완료 → 1.0 유지 후 1.5초 뒤 fade out
+            if (metaTrackIdRef.current === thisTrackId) {
+              setLoadProgress(1.0)
+              setTimeout(() => {
+                if (metaTrackIdRef.current === thisTrackId) setLoadProgress(null)
+              }, 1500)
+            }
+          } catch (e) {
+            console.warn('[GlobalPlayer] Preloader failed, falling back to /api/stream:', e)
+            newSrc = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
+            setLoadProgress(null)
+          }
         }
       }
 
@@ -375,9 +386,9 @@ export default function GlobalPlayer() {
               unlockAllAudioContexts().catch(() => {})
               directAudioRef.current!.play().catch((e) => console.warn('iOS direct play blocked:', e))
             }
-            directAudioRef.current!.removeEventListener('canplaythrough', handleCanPlay)
+            directAudioRef.current!.removeEventListener('canplay', handleCanPlay)
           }
-          directAudioRef.current.addEventListener('canplaythrough', handleCanPlay)
+          directAudioRef.current.addEventListener('canplay', handleCanPlay)
         }
         return
       }
@@ -396,11 +407,11 @@ export default function GlobalPlayer() {
           if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
           if (isPlaying) {
             unlockAllAudioContexts().catch(() => {})
-            audioRef.current!.play().catch((e) => console.warn('iOS play blocked:', e))
+            audioRef.current!.play().catch((e) => console.warn('Play blocked:', e))
           }
-          audioRef.current!.removeEventListener('canplaythrough', handleCanPlay)
+          audioRef.current!.removeEventListener('canplay', handleCanPlay)
         }
-        audioRef.current.addEventListener('canplaythrough', handleCanPlay)
+        audioRef.current.addEventListener('canplay', handleCanPlay)
       }
     }
 

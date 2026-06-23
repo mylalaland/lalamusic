@@ -246,24 +246,34 @@ export default function DesktopPlayer() {
           return
         }
 
-        // [NEW] Google Drive에서 직접 다운로드
-        try {
-          setLoadProgress(0)
-          newSrc = await preloadTrack(track.id, track.id, {
-            onProgress: (pct) => {
-              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(pct)
-            }
-          })
-          if (metaTrackIdRef.current === thisTrackId) {
-            setLoadProgress(1.0)
-            setTimeout(() => {
-              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(null)
-            }, 1500)
-          }
-        } catch (e) {
-          console.warn('[DesktopPlayer] Preloader failed, falling back to /api/stream:', e)
+        // [FIX] FLAC/대용량 파일은 preloader 전체 다운 대신 직접 스트리밍
+        const fileName = (track.name || track.title || '').toLowerCase()
+        const isLargeFormat = fileName.endsWith('.flac') || fileName.endsWith('.wav') || 
+          (track.mimeType && (track.mimeType.includes('flac') || track.mimeType.includes('wav')))
+
+        if (isLargeFormat) {
+          console.log('[DesktopPlayer] Large format detected, using stream proxy for:', fileName)
           newSrc = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
           setLoadProgress(null)
+        } else {
+          try {
+            setLoadProgress(0)
+            newSrc = await preloadTrack(track.id, track.id, {
+              onProgress: (pct) => {
+                if (metaTrackIdRef.current === thisTrackId) setLoadProgress(pct)
+              }
+            })
+            if (metaTrackIdRef.current === thisTrackId) {
+              setLoadProgress(1.0)
+              setTimeout(() => {
+                if (metaTrackIdRef.current === thisTrackId) setLoadProgress(null)
+              }, 1500)
+            }
+          } catch (e) {
+            console.warn('[DesktopPlayer] Preloader failed, falling back to /api/stream:', e)
+            newSrc = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
+            setLoadProgress(null)
+          }
         }
       }
 
@@ -293,9 +303,9 @@ export default function DesktopPlayer() {
             if (isPlaying && audioRef.current) {
               audioRef.current.play().catch((e) => console.warn('Desktop play blocked:', e))
             }
-            audioRef.current?.removeEventListener('canplaythrough', handleCanPlay)
+            audioRef.current?.removeEventListener('canplay', handleCanPlay)
           }
-          audioRef.current.addEventListener('canplaythrough', handleCanPlay)
+          audioRef.current.addEventListener('canplay', handleCanPlay)
         }
       }
     }
