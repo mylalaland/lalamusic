@@ -72,14 +72,11 @@ export default function GlobalPlayer() {
   const [playlists, setPlaylists] = useState<any[]>([])
   const [playlistAdded, setPlaylistAdded] = useState(false)
   const preloadAbortRef = useRef<(() => void) | null>(null)
-  const [debugLog, setDebugLog] = useState<string[]>([])
-  const addDebug = (msg: string) => { setDebugLog(prev => [...prev.slice(-15), `${new Date().toLocaleTimeString()}: ${msg}`]) }
+
   
   const handleTogglePlay = () => {
     unlockAllAudioContexts().catch(() => {})
-    // @ts-ignore
     if (fallbackPlayerRef.current?.audioContext?.state === 'suspended') {
-      // @ts-ignore
       fallbackPlayerRef.current.audioContext.resume().catch(() => {})
     }
     togglePlay()
@@ -111,28 +108,21 @@ export default function GlobalPlayer() {
   // Web Audio API 출력은 iOS "ambient" 세션이라 소리가 안 남.
   // <audio> 태그로 WAV를 재생하면 "media" 세션이라 소리가 남.
   const startFallbackPlayback = async (url: string) => {
-    addDebug('▶ startFallbackPlayback 시작 (WAV 변환 방식)')
     cleanupFallback()
 
-    // Step 1: FLAC blob을 다운로드하고 AudioBuffer로 디코딩
     try {
-      addDebug('fetch + decodeAudioData 시작...')
+      // Step 1: FLAC blob을 다운로드하고 AudioBuffer로 디코딩
       const tempCtx = new AudioContext()
       const response = await fetch(url)
       if (!response.ok) throw new Error(`fetch failed: ${response.status}`)
       const arrayBuffer = await response.arrayBuffer()
-      addDebug(`다운로드 완료: ${(arrayBuffer.byteLength / 1024 / 1024).toFixed(1)}MB`)
-      
       const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer)
-      addDebug(`디코딩 완료: ${audioBuffer.duration.toFixed(1)}s, ${audioBuffer.numberOfChannels}ch, ${audioBuffer.sampleRate}Hz`)
       
       // Step 2: AudioBuffer → WAV Blob 변환
-      addDebug('WAV 변환 시작...')
       const wavBlob = audioBufferToWavBlob(audioBuffer)
       const wavUrl = URL.createObjectURL(wavBlob)
-      addDebug(`WAV 변환 완료: ${(wavBlob.size / 1024 / 1024).toFixed(1)}MB`)
       
-      // AudioContext 정리 (더 이상 필요 없음)
+      // AudioContext 정리 (디코딩용으로만 사용)
       tempCtx.close().catch(() => {})
       
       // Step 3: <audio> 태그로 WAV 재생
@@ -145,23 +135,18 @@ export default function GlobalPlayer() {
         audioRef.current.load()
         
         setDuration(audioBuffer.duration)
-        // isFallbackMode를 false로 유지 — 표준 <audio> 경로로 재생
         setIsFallbackMode(false)
         
         const handleCanPlay = () => {
-          addDebug('✅ WAV canplay! play() 호출')
           if (isPlayingRef.current && audioRef.current) {
-            audioRef.current.play()
-              .then(() => addDebug('✅ WAV play() 성공!'))
-              .catch((e: any) => addDebug(`❌ WAV play() 실패: ${e?.message}`))
+            audioRef.current.play().catch((e) => console.warn('[FLAC] WAV play failed:', e))
           }
           audioRef.current?.removeEventListener('canplay', handleCanPlay)
         }
         audioRef.current.addEventListener('canplay', handleCanPlay)
-        addDebug('<audio>.src = WAV blob URL 설정 완료')
       }
-    } catch (e: any) {
-      addDebug(`❌ 전체 실패: ${e?.message || e}`)
+    } catch (e) {
+      console.error('[FLAC] Decode/WAV conversion failed:', e)
     }
   }
 
@@ -172,28 +157,17 @@ export default function GlobalPlayer() {
     const unlockAudio = () => {
       if (unlocked) return
       unlocked = true
-      addDebug('🔓 unlockAudio 호출됨')
       
-      // [FIX] iOS: src 없는 <audio>의 play()는 unlock이 안 됨. 무음 WAV를 src로 설정
+      // iOS: src 없는 <audio>의 play()는 unlock이 안 됨. 무음 WAV를 src로 설정
       if (audioRef.current) {
         if (!audioRef.current.src || audioRef.current.src === '' || audioRef.current.src === window.location.href) {
           audioRef.current.src = SILENT_WAV
         }
         const silentPlay = audioRef.current.play()
-        silentPlay?.then(() => {
-          addDebug('✅ unlock play() 성공')
-          audioRef.current?.pause()
-        }).catch((e) => {
-          addDebug(`❌ unlock play() 실패: ${e}`)
-        })
+        silentPlay?.then(() => audioRef.current?.pause()).catch(() => {})
       }
       
       unlockAllAudioContexts().catch(() => {})
-      // @ts-ignore
-      if (fallbackPlayerRef.current?.audioContext?.state === 'suspended') {
-        // @ts-ignore
-        fallbackPlayerRef.current.audioContext.resume().catch(() => {})
-      }
       
       document.removeEventListener('touchstart', unlockAudio)
       document.removeEventListener('click', unlockAudio)
@@ -469,12 +443,10 @@ export default function GlobalPlayer() {
       // stale check
       if (metaTrackIdRef.current !== thisTrackId) return
 
-      // 포맷별 재생 경로 분기 — iOS에서 FLAC/OGG/OPUS는 <audio> 태그로 재생 불가
-      // AudioContext.decodeAudioData()로 디코딩하는 WebAudioFallbackPlayer 사용
+      // 포맷별 재생 경로 분기 — iOS에서 FLAC/OGG/OPUS는 <audio> 태그로 직접 재생 불가
+      // decodeAudioData로 디코딩 → WAV로 변환 → <audio> 태그로 재생
       const useFallback = needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)
-      addDebug(`포맷 분기: ${track.name}, fallback=${useFallback}, src길이=${newSrc.length}`)
       if (useFallback) {
-        addDebug('→ WebAudioFallbackPlayer 경로')
         startFallbackPlayback(newSrc)
         return
       }
@@ -543,7 +515,6 @@ export default function GlobalPlayer() {
   useEffect(() => {
     // WebAudioFallbackPlayer 모드 (FLAC/OGG on iOS)
     if (isFallbackMode && fallbackPlayerRef.current) {
-      // @ts-ignore
       const ctx = fallbackPlayerRef.current.audioContext
       if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {})
       if (isPlaying) fallbackPlayerRef.current.play()
@@ -617,13 +588,11 @@ export default function GlobalPlayer() {
     seekTimeRef.current = time
   }
   const handleSeekEnd = () => {
-    addDebug(`seekEnd: time=${seekTimeRef.current.toFixed(1)}, fallback=${isFallbackMode}`)
     if (isFallbackMode && fallbackPlayerRef.current) {
       fallbackPlayerRef.current.seek(seekTimeRef.current)
     } else if (audioRef.current) {
       audioRef.current.currentTime = seekTimeRef.current
-      addDebug(`<audio>.currentTime 설정 완료: ${audioRef.current.currentTime.toFixed(1)}`)
-      // WAV seek 후 재생 보장
+      // seek 후 재생 보장
       if (isPlaying && audioRef.current.paused) {
         audioRef.current.play().catch(() => {})
       }
@@ -787,54 +756,7 @@ export default function GlobalPlayer() {
         onProgress={handleProgress}
       />
 
-      {/* DEBUG OVERLAY - FLAC 재생 디버깅용 (배포 후 제거) */}
-      {debugLog.length > 0 && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
-          background: 'rgba(0,0,0,0.85)', color: '#0f0', fontSize: '10px',
-          padding: '4px 8px', maxHeight: '40vh', overflow: 'auto',
-          fontFamily: 'monospace', lineHeight: '1.4'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', gap: '4px' }}>
-            <b>🔧 Debug</b>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button onClick={() => {
-                try {
-                  const ctx = new AudioContext()
-                  addDebug(`🔊 BEEP: newCtx state=${ctx.state}`)
-                  ctx.resume().then(() => {
-                    const osc = ctx.createOscillator()
-                    const gain = ctx.createGain()
-                    osc.frequency.value = 440
-                    gain.gain.value = 0.5
-                    osc.connect(gain)
-                    gain.connect(ctx.destination)
-                    osc.start()
-                    osc.stop(ctx.currentTime + 0.5)
-                    addDebug(`🔊 BEEP 재생 중! ctx.state=${ctx.state}`)
-                  })
-                } catch(e: any) { addDebug(`❌ BEEP 실패: ${e?.message}`) }
-              }} style={{ color: '#ff0', background: '#333', border: '1px solid #ff0', fontSize: '10px', padding: '2px 6px' }}>
-                🔊 BEEP
-              </button>
-              <button onClick={() => {
-                if (audioRef.current) {
-                  audioRef.current.src = SILENT_WAV
-                  audioRef.current.loop = false
-                  audioRef.current.volume = 1
-                  audioRef.current.play()
-                    .then(() => addDebug('✅ <audio> play() 성공!'))
-                    .catch((e: any) => addDebug(`❌ <audio> play() 실패: ${e?.message}`))
-                }
-              }} style={{ color: '#0ff', background: '#333', border: '1px solid #0ff', fontSize: '10px', padding: '2px 6px' }}>
-                🎵 AUDIO
-              </button>
-              <button onClick={() => setDebugLog([])} style={{ color: '#f00', background: 'none', border: 'none', fontSize: '10px' }}>CLEAR</button>
-            </div>
-          </div>
-          {debugLog.map((log, i) => <div key={i}>{log}</div>)}
-        </div>
-      )}
+
 
       {/* ---- 미니 플레이어 (Precision Instrument Style) ---- */}
       {!isExpanded && (
