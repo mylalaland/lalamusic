@@ -791,9 +791,42 @@ export default function GlobalPlayer() {
           padding: '4px 8px', maxHeight: '40vh', overflow: 'auto',
           fontFamily: 'monospace', lineHeight: '1.4'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-            <b>🔧 FLAC Debug</b>
-            <button onClick={() => setDebugLog([])} style={{ color: '#f00', background: 'none', border: 'none', fontSize: '10px' }}>CLEAR</button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', gap: '4px' }}>
+            <b>🔧 Debug</b>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button onClick={() => {
+                try {
+                  const ctx = new AudioContext()
+                  addDebug(`🔊 BEEP: newCtx state=${ctx.state}`)
+                  ctx.resume().then(() => {
+                    const osc = ctx.createOscillator()
+                    const gain = ctx.createGain()
+                    osc.frequency.value = 440
+                    gain.gain.value = 0.5
+                    osc.connect(gain)
+                    gain.connect(ctx.destination)
+                    osc.start()
+                    osc.stop(ctx.currentTime + 0.5)
+                    addDebug(`🔊 BEEP 재생 중! ctx.state=${ctx.state}`)
+                  })
+                } catch(e: any) { addDebug(`❌ BEEP 실패: ${e?.message}`) }
+              }} style={{ color: '#ff0', background: '#333', border: '1px solid #ff0', fontSize: '10px', padding: '2px 6px' }}>
+                🔊 BEEP
+              </button>
+              <button onClick={() => {
+                if (audioRef.current) {
+                  audioRef.current.src = SILENT_WAV
+                  audioRef.current.loop = false
+                  audioRef.current.volume = 1
+                  audioRef.current.play()
+                    .then(() => addDebug('✅ <audio> play() 성공!'))
+                    .catch((e: any) => addDebug(`❌ <audio> play() 실패: ${e?.message}`))
+                }
+              }} style={{ color: '#0ff', background: '#333', border: '1px solid #0ff', fontSize: '10px', padding: '2px 6px' }}>
+                🎵 AUDIO
+              </button>
+              <button onClick={() => setDebugLog([])} style={{ color: '#f00', background: 'none', border: 'none', fontSize: '10px' }}>CLEAR</button>
+            </div>
           </div>
           {debugLog.map((log, i) => <div key={i}>{log}</div>)}
         </div>
