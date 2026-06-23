@@ -290,25 +290,25 @@ export default function DesktopPlayer() {
       cleanupFallback()
 
       if (audioRef.current) {
-        if (audioRef.current.src.indexOf(track.id) === -1) {
-          audioRef.current.crossOrigin = "anonymous"
-          audioRef.current.src = newSrc
-          audioRef.current.playbackRate = playbackRate
-          audioRef.current.volume = isMuted ? 0 : volume
-          retryCountRef.current = 0
-          audioRef.current.load()
-          
-          const handleCanPlay = () => {
-            if ((track as any).initialPosition) {
-              if (audioRef.current) audioRef.current.currentTime = (track as any).initialPosition
-            }
-            if (isPlaying && audioRef.current) {
-              audioRef.current.play().catch((e) => console.warn('Desktop play blocked:', e))
-            }
-            audioRef.current?.removeEventListener('canplay', handleCanPlay)
+        // blob URL은 same-origin이므로 crossOrigin 불필요
+        if (!newSrc.startsWith('blob:')) audioRef.current.crossOrigin = "anonymous"
+        else audioRef.current.removeAttribute('crossorigin')
+        audioRef.current.src = newSrc
+        audioRef.current.playbackRate = playbackRate
+        audioRef.current.volume = isMuted ? 0 : volume
+        retryCountRef.current = 0
+        audioRef.current.load()
+        
+        const handleCanPlay = () => {
+          if ((track as any).initialPosition) {
+            if (audioRef.current) audioRef.current.currentTime = (track as any).initialPosition
           }
-          audioRef.current.addEventListener('canplay', handleCanPlay)
+          if (audioRef.current) {
+            audioRef.current.play().catch((e) => console.warn('Desktop play blocked:', e))
+          }
+          audioRef.current?.removeEventListener('canplay', handleCanPlay)
         }
+        audioRef.current.addEventListener('canplay', handleCanPlay)
       }
     }
 
@@ -345,7 +345,8 @@ export default function DesktopPlayer() {
     releaseAllExcept(keepIds)
   }, [track?.id, playlist])
 
-  // 재생 상태 리스너 (강제 동기화)
+  // 재생 상태 리스너 — UI 버튼 동기화만 담당
+  // readyState < 2이면 play() 호출하지 않음 (track change useEffect의 canplay가 담당)
   useEffect(() => {
     // [NEW] Fallback mode sync
     if (isFallbackMode && fallbackPlayerRef.current) {
@@ -366,15 +367,8 @@ export default function DesktopPlayer() {
       }
       if (audioRef.current.readyState >= 2) {
         audioRef.current.play().catch((e) => console.warn("Audio play blocked by browser:", e))
-      } else {
-        const onReady = () => {
-          if (isPlaying) {
-            audioRef.current?.play().catch(() => {})
-          }
-          audioRef.current?.removeEventListener('canplay', onReady)
-        }
-        audioRef.current.addEventListener('canplay', onReady)
       }
+      // readyState < 2이면 아무것도 하지 않음 — track useEffect의 canplay가 담당
     } else {
       audioRef.current.pause()
     }

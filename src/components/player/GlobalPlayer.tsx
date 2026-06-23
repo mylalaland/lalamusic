@@ -46,6 +46,7 @@ export default function GlobalPlayer() {
   const retryCountRef = useRef(0)
   const metaTrackIdRef = useRef<string | null>(null)
   const metaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isPlayingRef = useRef(isPlaying) // 클로저에서 항상 최신 isPlaying 참조
   
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -76,6 +77,9 @@ export default function GlobalPlayer() {
     unlockAllAudioContexts().catch(() => {})
     togglePlay()
   }
+
+  // isPlayingRef 동기화 — 클로저에서 항상 최신 값 참조
+  useEffect(() => { isPlayingRef.current = isPlaying }, [isPlaying])
 
   // [FIX] iOS Safari: AudioContext must be unlocked via user gesture
   useEffect(() => {
@@ -329,14 +333,14 @@ export default function GlobalPlayer() {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
     if (directAudioRef.current) { directAudioRef.current.pause(); directAudioRef.current.src = ''; }
 
-    // [NEW] 오디오 소스 로딩 (Preloader 기반 직접 스트리밍)
+    // [NEW] 오디오 소스 로딩 — src 설정만, 재생은 isPlaying useEffect가 담당
     const loadAudioSource = async () => {
       let newSrc: string
 
       // blob/http 소스가 이미 있으면 (오프라인 파일 등) 그대로 사용
       if ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob'))) {
         newSrc = (track as any).src
-        setLoadProgress(null) // 오프라인 파일은 이미 로컬
+        setLoadProgress(null)
       } else {
         // [OFFLINE MODE] 오프라인 모드에서는 스트리밍 차단
         const { useSettingsStore } = await import('@/lib/store/useSettingsStore')
@@ -344,10 +348,10 @@ export default function GlobalPlayer() {
         if (isOffline) {
           console.log('[GlobalPlayer] Offline mode ON — streaming blocked for:', track.name)
           setLoadProgress(null)
-          return // 스트리밍 시작하지 않음
+          return
         }
 
-        // [FIX] 모든 포맷 preloader 사용 (Vercel 트래픽 0)
+        // 모든 포맷 preloader 사용 (Vercel 트래픽 0)
         try {
           setLoadProgress(0)
           newSrc = await preloadTrack(track.id, track.id, {
@@ -364,28 +368,33 @@ export default function GlobalPlayer() {
         } catch (e) {
           console.error('[GlobalPlayer] Preloader failed:', e)
           setLoadProgress(null)
-          return // Vercel 프록시 폴백 제거 — 직접 다운로드만 사용
+          return
         }
       }
 
+      // stale check
+      if (metaTrackIdRef.current !== thisTrackId) return
+
       // 포맷별 재생 경로 분기
       if (needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)) {
-        console.log('[GlobalPlayer] iOS unsupported format detected, using Direct Audio')
+        console.log('[GlobalPlayer] iOS unsupported format, using Direct Audio')
         setIsFallbackMode(true)
         
         if (directAudioRef.current) {
-          directAudioRef.current.crossOrigin = "anonymous"
+          if (newSrc.startsWith('blob:')) directAudioRef.current.removeAttribute('crossorigin')
+          else directAudioRef.current.crossOrigin = "anonymous"
           directAudioRef.current.src = newSrc
           directAudioRef.current.playbackRate = playbackRate
           directAudioRef.current.volume = isMuted ? 0 : volume
           retryCountRef.current = 0
           directAudioRef.current.load()
-          
+
           const handleCanPlay = () => {
             if ((track as any).initialPosition) directAudioRef.current!.currentTime = (track as any).initialPosition
-            if (isPlaying) {
+            // isPlayingRef로 항상 최신 상태 참조 (클로저 문제 없음)
+            if (isPlayingRef.current) {
               unlockAllAudioContexts().catch(() => {})
-              directAudioRef.current!.play().catch((e) => console.warn('iOS direct play blocked:', e))
+              directAudioRef.current!.play().catch((e) => console.warn('iOS play blocked:', e))
             }
             directAudioRef.current!.removeEventListener('canplay', handleCanPlay)
           }
@@ -397,16 +406,17 @@ export default function GlobalPlayer() {
       // Standard <audio> playback path
       setIsFallbackMode(false)
       if (audioRef.current) {
-        audioRef.current.crossOrigin = "anonymous"
+        if (newSrc.startsWith('blob:')) audioRef.current.removeAttribute('crossorigin')
+        else audioRef.current.crossOrigin = "anonymous"
         audioRef.current.src = newSrc
         audioRef.current.playbackRate = playbackRate
         audioRef.current.volume = isMuted ? 0 : volume
         retryCountRef.current = 0
         audioRef.current.load()
-        
+
         const handleCanPlay = () => {
           if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
-          if (isPlaying) {
+          if (isPlayingRef.current) {
             unlockAllAudioContexts().catch(() => {})
             audioRef.current!.play().catch((e) => console.warn('Play blocked:', e))
           }
@@ -453,7 +463,8 @@ export default function GlobalPlayer() {
     releaseAllExcept(keepIds)
   }, [track?.id, playlist])
 
-  // 재생 상태 동기화
+  // 재생 상태 동기화 — UI 버튼으로 play/pause 토글할 때만 동작
+  // 주의: readyState < 2이면 play() 호출하지 않음 (track change useEffect의 canplay가 담당)
   useEffect(() => {
     const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
     if (!activeAudio) return
@@ -462,13 +473,8 @@ export default function GlobalPlayer() {
       unlockAllAudioContexts().catch(() => {})
       if (activeAudio.readyState >= 2) {
         activeAudio.play().catch((e) => console.warn('Play state sync blocked:', e))
-      } else {
-        const onReady = () => {
-          activeAudio.play().catch(() => {})
-          activeAudio.removeEventListener('canplay', onReady)
-        }
-        activeAudio.addEventListener('canplay', onReady)
       }
+      // readyState < 2이면 아무것도 하지 않음 — track useEffect의 canplay 핸들러가 play() 담당
     } else {
       activeAudio.pause()
     }

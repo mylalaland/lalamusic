@@ -84,6 +84,10 @@ async function fetchAndCache(
   // 3. 진행률 추적하며 다운로드
   const contentLength = parseInt(audioRes.headers.get('Content-Length') || '0')
   
+  // Google Drive가 octet-stream을 반환하는 경우 대비 MIME 보정
+  const rawType = audioRes.headers.get('Content-Type') || 'audio/mpeg'
+  const resolvedType = resolveMimeType(rawType)
+
   if (contentLength && options?.onProgress && audioRes.body) {
     // ReadableStream으로 진행률 추적
     const reader = audioRes.body.getReader()
@@ -98,19 +102,28 @@ async function fetchAndCache(
       options.onProgress(Math.min(received / contentLength, 1))
     }
 
-    const contentType = audioRes.headers.get('Content-Type') || 'audio/mpeg'
-    const blob = new Blob(chunks as BlobPart[], { type: contentType })
+    const blob = new Blob(chunks as BlobPart[], { type: resolvedType })
     const blobUrl = URL.createObjectURL(blob)
     cache.set(trackId, { blobUrl, blob })
     return blobUrl
   } else {
     // 진행률 불필요 시 간단히 blob으로
-    const blob = await audioRes.blob()
+    const rawBlob = await audioRes.blob()
+    // blob type이 octet-stream이면 보정
+    const blob = rawBlob.type.includes('octet-stream') 
+      ? new Blob([rawBlob], { type: resolvedType })
+      : rawBlob
     const blobUrl = URL.createObjectURL(blob)
     cache.set(trackId, { blobUrl, blob })
     options?.onProgress?.(1)
     return blobUrl
   }
+}
+
+/** Google Drive가 octet-stream을 반환하는 경우 audio MIME으로 보정 */
+function resolveMimeType(raw: string): string {
+  if (!raw || raw.includes('octet-stream')) return 'audio/mpeg'
+  return raw
 }
 
 /**
