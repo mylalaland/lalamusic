@@ -94,10 +94,11 @@ export default function GlobalPlayer() {
       fallbackPlayerRef.current.destroy()
       fallbackPlayerRef.current = null
     }
-    // 무음 <audio> 정리 (iOS playback session 유지용)
-    if (audioRef.current && audioRef.current.loop) {
-      audioRef.current.loop = false
+    // <audio> 정리 (srcObject/src 모두)
+    if (audioRef.current) {
       audioRef.current.pause()
+      audioRef.current.srcObject = null
+      audioRef.current.loop = false
       audioRef.current.src = ''
     }
     setIsFallbackMode(false)
@@ -151,14 +152,34 @@ export default function GlobalPlayer() {
     if (ok) {
       player.setVolume(isMuted ? 0 : volume)
       player.setPlaybackRate(playbackRate)
+
+      // [CRITICAL] iOS: Web Audio → MediaStreamDestination → <audio>.srcObject
+      // Web Audio "ambient" 세션은 무음 스위치를 존중 → 소리 안 남
+      // <audio> "media" 세션은 무음 스위치 무시 → 소리 남
+      try {
+        const msd = player.audioContext.createMediaStreamDestination()
+        player.gainNode.connect(msd)
+        addDebug(`MediaStreamDest 생성 OK, tracks: ${msd.stream.getAudioTracks().length}`)
+        
+        if (audioRef.current) {
+          audioRef.current.srcObject = msd.stream
+          audioRef.current.volume = 1
+          audioRef.current.loop = false
+          // fire-and-forget (await하면 걸릴 수 있음)
+          audioRef.current.play()
+            .then(() => addDebug('✅ <audio>.srcObject play() 성공'))
+            .catch((e: any) => addDebug(`❌ <audio>.srcObject play() 실패: ${e?.message}`))
+        }
+      } catch (e: any) {
+        addDebug(`❌ MediaStreamDest 실패: ${e?.message}`)
+      }
+
       setIsFallbackMode(true)
-      // @ts-ignore
       addDebug(`play() 호출 전 - ctx상태: ${player.audioContext?.state}, buffer: ${player.audioBuffer ? player.audioBuffer.duration.toFixed(1) + 's' : 'null'}`)
       try {
         await player.play()
         addDebug('✅ play() 완료')
-        // @ts-ignore
-        addDebug(`play() 후 - ctx상태: ${player.audioContext?.state}, state: ${player._state}`)
+        addDebug(`play() 후 - ctx상태: ${player.audioContext?.state}`)
       } catch (e: any) {
         addDebug(`❌ play() 실패: ${e?.message || e}`)
       }

@@ -13,10 +13,10 @@ import { getFallbackAudioContext } from './sharedAudioCtx'
 export type FallbackState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'error'
 
 export class WebAudioFallbackPlayer {
-  private audioContext: AudioContext
-  private audioBuffer: AudioBuffer | null = null
+  public audioContext: AudioContext
+  public audioBuffer: AudioBuffer | null = null
   private sourceNode: AudioBufferSourceNode | null = null
-  private gainNode: GainNode
+  public gainNode: GainNode
   
   private _state: FallbackState = 'idle'
   private _startTime = 0      // audioContext.currentTime when playback started
