@@ -72,6 +72,8 @@ export default function GlobalPlayer() {
   const [playlists, setPlaylists] = useState<any[]>([])
   const [playlistAdded, setPlaylistAdded] = useState(false)
   const preloadAbortRef = useRef<(() => void) | null>(null)
+  const [debugLog, setDebugLog] = useState<string[]>([])
+  const addDebug = (msg: string) => { setDebugLog(prev => [...prev.slice(-15), `${new Date().toLocaleTimeString()}: ${msg}`]) }
   
   const handleTogglePlay = () => {
     unlockAllAudioContexts().catch(() => {})
@@ -106,44 +108,64 @@ export default function GlobalPlayer() {
 
   // WebAudioFallbackPlayer로 FLAC/OGG/OPUS 재생 (iOS Safari 전용)
   const startFallbackPlayback = async (url: string) => {
+    addDebug('▶ startFallbackPlayback 시작')
     cleanupFallback()
 
-    // [CRITICAL] iOS: <audio> 태그로 무음 재생하여 "playback" 오디오 세션 활성화
-    // Web Audio API는 "ambient" 세션을 사용하므로 소리가 안 남.
-    // <audio> 태그가 재생 중이면 "playback" 세션이 활성화 → Web Audio 출력도 들림.
+    // [CRITICAL] iOS: <audio> 태그로 무음 재생 → "playback" 오디오 세션 활성화
     if (audioRef.current) {
       audioRef.current.src = SILENT_WAV
       audioRef.current.loop = true
-      audioRef.current.volume = 0.001 // 거의 무음
+      audioRef.current.volume = 0.001
       try {
         await audioRef.current.play()
-      } catch (e) {
-        console.warn('[GlobalPlayer] Silent audio play failed:', e)
+        addDebug('✅ 무음WAV play() 성공')
+      } catch (e: any) {
+        addDebug(`❌ 무음WAV play() 실패: ${e?.message || e}`)
       }
     }
 
     const player = new WebAudioFallbackPlayer(undefined)
     fallbackPlayerRef.current = player
+    // @ts-ignore
+    addDebug(`AudioContext 상태: ${player.audioContext?.state}`)
 
     player.onTimeUpdate = (t) => { if (!isSeeking) { setCurrentTime(t); seekTimeRef.current = t } }
-    player.onDurationChange = (d) => setDuration(d)
+    player.onDurationChange = (d) => { setDuration(d); addDebug(`duration 설정: ${d.toFixed(1)}s`) }
     player.onEnded = () => handleNextWrapped()
 
-    // iOS: 먼저 AudioContext를 resume
+    // iOS: AudioContext resume
     try {
       // @ts-ignore
       if (player.audioContext?.state === 'suspended') {
         // @ts-ignore
         await player.audioContext.resume()
+        // @ts-ignore
+        addDebug(`AudioContext resume 후: ${player.audioContext?.state}`)
       }
-    } catch (e) { /* ignore */ }
+    } catch (e: any) {
+      addDebug(`❌ AudioContext resume 실패: ${e?.message}`)
+    }
 
+    addDebug('loadAndDecode 시작...')
     const ok = await player.loadAndDecode(url)
+    addDebug(`loadAndDecode 결과: ${ok}`)
+
     if (ok) {
       player.setVolume(isMuted ? 0 : volume)
       player.setPlaybackRate(playbackRate)
       setIsFallbackMode(true)
-      await player.play()
+      // @ts-ignore
+      addDebug(`play() 호출 전 - ctx상태: ${player.audioContext?.state}, buffer: ${player.audioBuffer ? player.audioBuffer.duration.toFixed(1) + 's' : 'null'}`)
+      try {
+        await player.play()
+        addDebug('✅ play() 완료')
+        // @ts-ignore
+        addDebug(`play() 후 - ctx상태: ${player.audioContext?.state}, state: ${player._state}`)
+      } catch (e: any) {
+        addDebug(`❌ play() 실패: ${e?.message || e}`)
+      }
+    } else {
+      addDebug('❌ loadAndDecode 실패!')
     }
   }
 
@@ -443,8 +465,10 @@ export default function GlobalPlayer() {
 
       // 포맷별 재생 경로 분기 — iOS에서 FLAC/OGG/OPUS는 <audio> 태그로 재생 불가
       // AudioContext.decodeAudioData()로 디코딩하는 WebAudioFallbackPlayer 사용
-      if (needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)) {
-        console.log('[GlobalPlayer] iOS unsupported format, using WebAudio fallback')
+      const useFallback = needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)
+      addDebug(`포맷 분기: ${track.name}, fallback=${useFallback}, src길이=${newSrc.length}`)
+      if (useFallback) {
+        addDebug('→ WebAudioFallbackPlayer 경로')
         startFallbackPlayback(newSrc)
         return
       }
@@ -750,6 +774,22 @@ export default function GlobalPlayer() {
         onError={handleAudioError}
         onProgress={handleProgress}
       />
+
+      {/* DEBUG OVERLAY - FLAC 재생 디버깅용 (배포 후 제거) */}
+      {debugLog.length > 0 && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
+          background: 'rgba(0,0,0,0.85)', color: '#0f0', fontSize: '10px',
+          padding: '4px 8px', maxHeight: '40vh', overflow: 'auto',
+          fontFamily: 'monospace', lineHeight: '1.4'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+            <b>🔧 FLAC Debug</b>
+            <button onClick={() => setDebugLog([])} style={{ color: '#f00', background: 'none', border: 'none', fontSize: '10px' }}>CLEAR</button>
+          </div>
+          {debugLog.map((log, i) => <div key={i}>{log}</div>)}
+        </div>
+      )}
 
       {/* ---- 미니 플레이어 (Precision Instrument Style) ---- */}
       {!isExpanded && (
