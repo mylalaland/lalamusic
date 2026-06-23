@@ -92,21 +92,44 @@ export default function GlobalPlayer() {
       fallbackPlayerRef.current.destroy()
       fallbackPlayerRef.current = null
     }
+    // 무음 <audio> 정리 (iOS playback session 유지용)
+    if (audioRef.current && audioRef.current.loop) {
+      audioRef.current.loop = false
+      audioRef.current.pause()
+      audioRef.current.src = ''
+    }
     setIsFallbackMode(false)
   }
+
+  // 1-sample silent WAV (forces iOS audio session to "playback" mode)
+  const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
 
   // WebAudioFallbackPlayer로 FLAC/OGG/OPUS 재생 (iOS Safari 전용)
   const startFallbackPlayback = async (url: string) => {
     cleanupFallback()
+
+    // [CRITICAL] iOS: <audio> 태그로 무음 재생하여 "playback" 오디오 세션 활성화
+    // Web Audio API는 "ambient" 세션을 사용하므로 소리가 안 남.
+    // <audio> 태그가 재생 중이면 "playback" 세션이 활성화 → Web Audio 출력도 들림.
+    if (audioRef.current) {
+      audioRef.current.src = SILENT_WAV
+      audioRef.current.loop = true
+      audioRef.current.volume = 0.001 // 거의 무음
+      try {
+        await audioRef.current.play()
+      } catch (e) {
+        console.warn('[GlobalPlayer] Silent audio play failed:', e)
+      }
+    }
+
     const player = new WebAudioFallbackPlayer(undefined)
     fallbackPlayerRef.current = player
-    // 주의: isFallbackMode는 loadAndDecode 완료 후 설정 (useEffect race 방지)
 
     player.onTimeUpdate = (t) => { if (!isSeeking) { setCurrentTime(t); seekTimeRef.current = t } }
     player.onDurationChange = (d) => setDuration(d)
     player.onEnded = () => handleNextWrapped()
 
-    // iOS: 먼저 AudioContext를 resume (user gesture 스택이 아직 유효할 수 있음)
+    // iOS: 먼저 AudioContext를 resume
     try {
       // @ts-ignore
       if (player.audioContext?.state === 'suspended') {
@@ -119,8 +142,7 @@ export default function GlobalPlayer() {
     if (ok) {
       player.setVolume(isMuted ? 0 : volume)
       player.setPlaybackRate(playbackRate)
-      setIsFallbackMode(true) // decode 완료 후 설정
-      // 곡 선택 = 재생 의도이므로 항상 play
+      setIsFallbackMode(true)
       await player.play()
     }
   }
