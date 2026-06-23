@@ -111,18 +111,16 @@ export default function GlobalPlayer() {
     addDebug('▶ startFallbackPlayback 시작')
     cleanupFallback()
 
-    // [CRITICAL] iOS: <audio> 태그로 무음 재생 → "playback" 오디오 세션 활성화
+    // [CRITICAL] iOS: <audio> 태그로 무음 재생 (fire-and-forget, await 하면 iOS에서 랫)
     if (audioRef.current) {
       audioRef.current.src = SILENT_WAV
       audioRef.current.loop = true
       audioRef.current.volume = 0.001
-      try {
-        await audioRef.current.play()
-        addDebug('✅ 무음WAV play() 성공')
-      } catch (e: any) {
-        addDebug(`❌ 무음WAV play() 실패: ${e?.message || e}`)
-      }
+      audioRef.current.play()
+        .then(() => addDebug('✅ 무음WAV play() 성공'))
+        .catch((e: any) => addDebug(`❌ 무음WAV play() 실패: ${e?.message || e}`))
     }
+    addDebug('무음WAV 시도 후 계속 진행')
 
     const player = new WebAudioFallbackPlayer(undefined)
     fallbackPlayerRef.current = player
@@ -176,10 +174,20 @@ export default function GlobalPlayer() {
     const unlockAudio = () => {
       if (unlocked) return
       unlocked = true
+      addDebug('🔓 unlockAudio 호출됨')
       
-      if (audioRef.current && audioRef.current.paused) {
+      // [FIX] iOS: src 없는 <audio>의 play()는 unlock이 안 됨. 무음 WAV를 src로 설정
+      if (audioRef.current) {
+        if (!audioRef.current.src || audioRef.current.src === '' || audioRef.current.src === window.location.href) {
+          audioRef.current.src = SILENT_WAV
+        }
         const silentPlay = audioRef.current.play()
-        silentPlay?.then(() => { audioRef.current?.pause() }).catch(() => {})
+        silentPlay?.then(() => {
+          addDebug('✅ unlock play() 성공')
+          audioRef.current?.pause()
+        }).catch((e) => {
+          addDebug(`❌ unlock play() 실패: ${e}`)
+        })
       }
       
       unlockAllAudioContexts().catch(() => {})
