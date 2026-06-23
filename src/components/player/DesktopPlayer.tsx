@@ -174,17 +174,26 @@ export default function DesktopPlayer() {
     cleanupFallback()
     const player = new WebAudioFallbackPlayer(undefined)
     fallbackPlayerRef.current = player
-    setIsFallbackMode(true)
 
     player.onTimeUpdate = (t) => { if (!isSeeking) setCurrentTime(t) }
     player.onDurationChange = (d) => setDuration(d)
     player.onEnded = () => handleNextWrapped()
 
+    // Pre-resume AudioContext
+    try {
+      // @ts-ignore
+      if (player.audioContext?.state === 'suspended') {
+        // @ts-ignore
+        await player.audioContext.resume()
+      }
+    } catch (e) { /* ignore */ }
+
     const ok = await player.loadAndDecode(url)
     if (ok) {
       player.setVolume(isMuted ? 0 : volume)
       player.setPlaybackRate(playbackRate)
-      if (isPlaying) player.play()
+      setIsFallbackMode(true)
+      await player.play()
     }
   }
 

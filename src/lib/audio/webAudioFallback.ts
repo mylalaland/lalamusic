@@ -88,13 +88,17 @@ export class WebAudioFallbackPlayer {
     }
   }
 
-  play(offset?: number) {
+  async play(offset?: number) {
     if (!this.audioBuffer) return
     if (this._state === 'playing') return
 
-    // Resume context if needed
+    // iOS: AudioContext MUST be resumed before source.start()
     if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume()
+      try {
+        await this.audioContext.resume()
+      } catch (e) {
+        console.warn('[WebAudioFallback] resume failed:', e)
+      }
     }
 
     // Clean up previous source
@@ -106,7 +110,6 @@ export class WebAudioFallbackPlayer {
     source.connect(this.gainNode)
     
     source.onended = () => {
-      // Only fire onEnded if we played to the end (not if stopped/seeked)
       if (this._state === 'playing') {
         const currentPos = this._pauseOffset + (this.audioContext.currentTime - this._startTime) * this._playbackRate
         if (currentPos >= this._duration - 0.1) {

@@ -100,17 +100,28 @@ export default function GlobalPlayer() {
     cleanupFallback()
     const player = new WebAudioFallbackPlayer(undefined)
     fallbackPlayerRef.current = player
-    setIsFallbackMode(true)
+    // 주의: isFallbackMode는 loadAndDecode 완료 후 설정 (useEffect race 방지)
 
     player.onTimeUpdate = (t) => { if (!isSeeking) { setCurrentTime(t); seekTimeRef.current = t } }
     player.onDurationChange = (d) => setDuration(d)
     player.onEnded = () => handleNextWrapped()
 
+    // iOS: 먼저 AudioContext를 resume (user gesture 스택이 아직 유효할 수 있음)
+    try {
+      // @ts-ignore
+      if (player.audioContext?.state === 'suspended') {
+        // @ts-ignore
+        await player.audioContext.resume()
+      }
+    } catch (e) { /* ignore */ }
+
     const ok = await player.loadAndDecode(url)
     if (ok) {
       player.setVolume(isMuted ? 0 : volume)
       player.setPlaybackRate(playbackRate)
-      if (isPlayingRef.current) player.play()
+      setIsFallbackMode(true) // decode 완료 후 설정
+      // 곡 선택 = 재생 의도이므로 항상 play
+      await player.play()
     }
   }
 
