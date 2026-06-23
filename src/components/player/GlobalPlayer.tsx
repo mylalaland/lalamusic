@@ -6,7 +6,7 @@ import { analyzeMusicMetadata } from '@/app/actions/metadata'
 import { getExternalLyrics } from '@/app/actions/lyrics'
 import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
-import { needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
+import { WebAudioFallbackPlayer, needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
 import { unlockAllAudioContexts } from '@/lib/audio/sharedAudioCtx'
 import { preloadTrack, getCachedUrl, releaseAllExcept, isCached } from '@/lib/audio/audioPreloader'
 import { 
@@ -37,7 +37,6 @@ export default function GlobalPlayer() {
   } = usePlayerStore()
 
   const audioRef = useRef<HTMLAudioElement>(null)
-  const directAudioRef = useRef<HTMLAudioElement>(null)
   const activeTrackRef = useRef<HTMLDivElement>(null)
   const activeLyricRef = useRef<HTMLParagraphElement>(null)
   const seekTimeRef = useRef<number>(0)
@@ -46,7 +45,8 @@ export default function GlobalPlayer() {
   const retryCountRef = useRef(0)
   const metaTrackIdRef = useRef<string | null>(null)
   const metaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isPlayingRef = useRef(isPlaying) // 클로저에서 항상 최신 isPlaying 참조
+  const isPlayingRef = useRef(isPlaying)
+  const fallbackPlayerRef = useRef<WebAudioFallbackPlayer | null>(null)
   
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -75,11 +75,44 @@ export default function GlobalPlayer() {
   
   const handleTogglePlay = () => {
     unlockAllAudioContexts().catch(() => {})
+    // @ts-ignore
+    if (fallbackPlayerRef.current?.audioContext?.state === 'suspended') {
+      // @ts-ignore
+      fallbackPlayerRef.current.audioContext.resume().catch(() => {})
+    }
     togglePlay()
   }
 
-  // isPlayingRef 동기화 — 클로저에서 항상 최신 값 참조
+  // isPlayingRef 동기화
   useEffect(() => { isPlayingRef.current = isPlaying }, [isPlaying])
+
+  // WebAudioFallbackPlayer 정리
+  const cleanupFallback = () => {
+    if (fallbackPlayerRef.current) {
+      fallbackPlayerRef.current.destroy()
+      fallbackPlayerRef.current = null
+    }
+    setIsFallbackMode(false)
+  }
+
+  // WebAudioFallbackPlayer로 FLAC/OGG/OPUS 재생 (iOS Safari 전용)
+  const startFallbackPlayback = async (url: string) => {
+    cleanupFallback()
+    const player = new WebAudioFallbackPlayer(undefined)
+    fallbackPlayerRef.current = player
+    setIsFallbackMode(true)
+
+    player.onTimeUpdate = (t) => { if (!isSeeking) { setCurrentTime(t); seekTimeRef.current = t } }
+    player.onDurationChange = (d) => setDuration(d)
+    player.onEnded = () => handleNextWrapped()
+
+    const ok = await player.loadAndDecode(url)
+    if (ok) {
+      player.setVolume(isMuted ? 0 : volume)
+      player.setPlaybackRate(playbackRate)
+      if (isPlayingRef.current) player.play()
+    }
+  }
 
   // [FIX] iOS Safari: AudioContext must be unlocked via user gesture
   useEffect(() => {
@@ -89,18 +122,17 @@ export default function GlobalPlayer() {
       if (unlocked) return
       unlocked = true
       
-      // Create a silent buffer and play it to unlock HTML5 audio ONLY IF PAUSED
       if (audioRef.current && audioRef.current.paused) {
         const silentPlay = audioRef.current.play()
         silentPlay?.then(() => { audioRef.current?.pause() }).catch(() => {})
       }
-      if (directAudioRef.current && directAudioRef.current.paused) {
-        const silentPlay = directAudioRef.current.play()
-        silentPlay?.then(() => { directAudioRef.current?.pause() }).catch(() => {})
-      }
       
-      // Unlock all Shared AudioContexts (Media & Fallback)
       unlockAllAudioContexts().catch(() => {})
+      // @ts-ignore
+      if (fallbackPlayerRef.current?.audioContext?.state === 'suspended') {
+        // @ts-ignore
+        fallbackPlayerRef.current.audioContext.resume().catch(() => {})
+      }
       
       document.removeEventListener('touchstart', unlockAudio)
       document.removeEventListener('click', unlockAudio)
@@ -331,7 +363,7 @@ export default function GlobalPlayer() {
     checkCacheAndFetch()
 
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
-    if (directAudioRef.current) { directAudioRef.current.pause(); directAudioRef.current.src = ''; }
+    cleanupFallback()
 
     // [NEW] 오디오 소스 로딩 — src 설정만, 재생은 isPlaying useEffect가 담당
     const loadAudioSource = async () => {
@@ -375,31 +407,11 @@ export default function GlobalPlayer() {
       // stale check
       if (metaTrackIdRef.current !== thisTrackId) return
 
-      // 포맷별 재생 경로 분기
+      // 포맷별 재생 경로 분기 — iOS에서 FLAC/OGG/OPUS는 <audio> 태그로 재생 불가
+      // AudioContext.decodeAudioData()로 디코딩하는 WebAudioFallbackPlayer 사용
       if (needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)) {
-        console.log('[GlobalPlayer] iOS unsupported format, using Direct Audio')
-        setIsFallbackMode(true)
-        
-        if (directAudioRef.current) {
-          if (newSrc.startsWith('blob:')) directAudioRef.current.removeAttribute('crossorigin')
-          else directAudioRef.current.crossOrigin = "anonymous"
-          directAudioRef.current.src = newSrc
-          directAudioRef.current.playbackRate = playbackRate
-          directAudioRef.current.volume = isMuted ? 0 : volume
-          retryCountRef.current = 0
-          directAudioRef.current.load()
-
-          const handleCanPlay = () => {
-            if ((track as any).initialPosition) directAudioRef.current!.currentTime = (track as any).initialPosition
-            // isPlayingRef로 항상 최신 상태 참조 (클로저 문제 없음)
-            if (isPlayingRef.current) {
-              unlockAllAudioContexts().catch(() => {})
-              directAudioRef.current!.play().catch((e) => console.warn('iOS play blocked:', e))
-            }
-            directAudioRef.current!.removeEventListener('canplay', handleCanPlay)
-          }
-          directAudioRef.current.addEventListener('canplay', handleCanPlay)
-        }
+        console.log('[GlobalPlayer] iOS unsupported format, using WebAudio fallback')
+        startFallbackPlayback(newSrc)
         return
       }
 
@@ -431,7 +443,7 @@ export default function GlobalPlayer() {
     return () => {
       if (metaTimerRef.current) { clearTimeout(metaTimerRef.current); metaTimerRef.current = null }
       if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
-      if (directAudioRef.current) { directAudioRef.current.pause(); directAudioRef.current.src = ''; }
+      cleanupFallback()
     }
   }, [track?.id])
 
@@ -463,20 +475,27 @@ export default function GlobalPlayer() {
     releaseAllExcept(keepIds)
   }, [track?.id, playlist])
 
-  // 재생 상태 동기화 — UI 버튼으로 play/pause 토글할 때만 동작
-  // 주의: readyState < 2이면 play() 호출하지 않음 (track change useEffect의 canplay가 담당)
+  // 재생 상태 동기화 — UI 버튼으로 play/pause 토글
   useEffect(() => {
-    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
-    if (!activeAudio) return
-    
+    // WebAudioFallbackPlayer 모드 (FLAC/OGG on iOS)
+    if (isFallbackMode && fallbackPlayerRef.current) {
+      // @ts-ignore
+      const ctx = fallbackPlayerRef.current.audioContext
+      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {})
+      if (isPlaying) fallbackPlayerRef.current.play()
+      else fallbackPlayerRef.current.pause()
+      return
+    }
+
+    // Standard <audio> 모드
+    if (!audioRef.current) return
     if (isPlaying) {
       unlockAllAudioContexts().catch(() => {})
-      if (activeAudio.readyState >= 2) {
-        activeAudio.play().catch((e) => console.warn('Play state sync blocked:', e))
+      if (audioRef.current.readyState >= 2) {
+        audioRef.current.play().catch((e) => console.warn('Play state sync blocked:', e))
       }
-      // readyState < 2이면 아무것도 하지 않음 — track useEffect의 canplay 핸들러가 play() 담당
     } else {
-      activeAudio.pause()
+      audioRef.current.pause()
     }
   }, [isPlaying, isFallbackMode])
 
@@ -484,9 +503,10 @@ export default function GlobalPlayer() {
   useEffect(() => {
     const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
 
-    if (directAudioRef.current) {
-      directAudioRef.current.volume = effectiveVolume
-      directAudioRef.current.playbackRate = playbackRate
+    // WebAudioFallbackPlayer 볼륨/속도 동기화
+    if (fallbackPlayerRef.current) {
+      fallbackPlayerRef.current.setVolume(effectiveVolume)
+      fallbackPlayerRef.current.setPlaybackRate(playbackRate)
     }
 
     if (!audioRef.current) return
@@ -509,26 +529,26 @@ export default function GlobalPlayer() {
     }
   }, [eqGains])
 
+  // fallback 모드에서는 WebAudioFallbackPlayer가 onTimeUpdate 콜백으로 직접 처리
   const handleTimeUpdate = () => { 
-    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
-    if (activeAudio && !isSeeking) {
-      const t = activeAudio.currentTime
+    if (isFallbackMode) return // fallback은 player.onTimeUpdate 콜백이 담당
+    if (audioRef.current && !isSeeking) {
+      const t = audioRef.current.currentTime
       setCurrentTime(t)
       seekTimeRef.current = t
     }
   }
-  // 버퍼 진행률 추적
   const handleProgress = () => {
-    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
-    if (activeAudio && activeAudio.buffered.length > 0 && activeAudio.duration > 0) {
-      const bufferedEnd = activeAudio.buffered.end(activeAudio.buffered.length - 1)
-      setBufferProgress(bufferedEnd / activeAudio.duration)
+    if (isFallbackMode) return // fallback은 전체 파일을 메모리에 로드하므로 버퍼 100%
+    if (audioRef.current && audioRef.current.buffered.length > 0 && audioRef.current.duration > 0) {
+      const bufferedEnd = audioRef.current.buffered.end(audioRef.current.buffered.length - 1)
+      setBufferProgress(bufferedEnd / audioRef.current.duration)
     }
   }
   const handleLoadedMetadata = () => { 
-    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
-    if (activeAudio && isFinite(activeAudio.duration)) {
-      setDuration(activeAudio.duration)
+    if (isFallbackMode) return // fallback은 player.onDurationChange 콜백이 담당
+    if (audioRef.current && isFinite(audioRef.current.duration)) {
+      setDuration(audioRef.current.duration)
     } else if ((track as any)?.duration) {
       setDuration((track as any).duration)
     }
@@ -541,9 +561,10 @@ export default function GlobalPlayer() {
     seekTimeRef.current = time
   }
   const handleSeekEnd = () => {
-    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
-    if (activeAudio) {
-      activeAudio.currentTime = seekTimeRef.current
+    if (isFallbackMode && fallbackPlayerRef.current) {
+      fallbackPlayerRef.current.seek(seekTimeRef.current)
+    } else if (audioRef.current) {
+      audioRef.current.currentTime = seekTimeRef.current
     }
     setIsSeeking(false)
   }
@@ -551,7 +572,13 @@ export default function GlobalPlayer() {
   const handleNextWrapped = () => {
     if (!track) return
     if (repeatMode === 'one') {
-      if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}) }
+      if (isFallbackMode && fallbackPlayerRef.current) {
+        fallbackPlayerRef.current.seek(0)
+        fallbackPlayerRef.current.play()
+      } else if (audioRef.current) {
+        audioRef.current.currentTime = 0
+        audioRef.current.play().catch(() => {})
+      }
       return
     }
     if (isShuffle && playlist.length > 0) {
@@ -566,7 +593,10 @@ export default function GlobalPlayer() {
     }
   }
   const handlePrevWrapped = () => {
-    if (currentTime > 3 && audioRef.current) { audioRef.current.currentTime = 0 } else { playPrev() }
+    if (currentTime > 3) {
+      if (isFallbackMode && fallbackPlayerRef.current) fallbackPlayerRef.current.seek(0)
+      else if (audioRef.current) audioRef.current.currentTime = 0
+    } else { playPrev() }
   }
   const toggleSpeed = () => {
     const speeds = [1.0, 1.25, 1.5, 0.5]
@@ -623,15 +653,18 @@ export default function GlobalPlayer() {
   }, [track, localCoverArt])
 
   useEffect(() => {
-    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
-    if (!navigator.mediaSession || !activeAudio) return
+    if (!navigator.mediaSession) return
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
     if (validDuration > 0 && isFinite(validDuration)) {
       try {
+        const position = isFallbackMode && fallbackPlayerRef.current
+          ? fallbackPlayerRef.current.currentTime
+          : (audioRef.current?.currentTime ?? 0)
+        const rate = isFallbackMode ? playbackRate : (audioRef.current?.playbackRate ?? 1)
         navigator.mediaSession.setPositionState({
           duration: validDuration,
-          playbackRate: activeAudio.playbackRate,
-          position: activeAudio.currentTime
+          playbackRate: rate,
+          position: Math.min(position, validDuration)
         })
       } catch (e) { }
     }
@@ -664,15 +697,15 @@ export default function GlobalPlayer() {
   }
 
   const handleAudioError = () => {
-    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
-    if (!activeAudio || !track) return
+    if (isFallbackMode) return // WebAudioFallbackPlayer has its own error handling
+    if (!audioRef.current || !track) return
     
     if (retryCountRef.current < 3) {
       retryCountRef.current += 1
-      const currentSrc = activeAudio.src
-      activeAudio.src = currentSrc
-      activeAudio.load()
-      if (isPlaying) activeAudio.play().catch(() => {})
+      const currentSrc = audioRef.current.src
+      audioRef.current.src = currentSrc
+      audioRef.current.load()
+      if (isPlaying) audioRef.current.play().catch(() => {})
     }
   }
 
@@ -685,14 +718,6 @@ export default function GlobalPlayer() {
     <>
       <audio 
         ref={audioRef} preload="auto" playsInline 
-        onTimeUpdate={handleTimeUpdate} 
-        onLoadedMetadata={handleLoadedMetadata} 
-        onEnded={handleNextWrapped}
-        onError={handleAudioError}
-        onProgress={handleProgress}
-      />
-      <audio 
-        ref={directAudioRef} preload="auto" playsInline 
         onTimeUpdate={handleTimeUpdate} 
         onLoadedMetadata={handleLoadedMetadata} 
         onEnded={handleNextWrapped}
