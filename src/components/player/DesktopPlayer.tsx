@@ -258,34 +258,24 @@ export default function DesktopPlayer() {
           return
         }
 
-        // [FIX] FLAC/대용량 파일은 preloader 전체 다운 대신 직접 스트리밍
-        const fileName = (track.name || track.title || '').toLowerCase()
-        const isLargeFormat = fileName.endsWith('.flac') || fileName.endsWith('.wav') || 
-          (track.mimeType && (track.mimeType.includes('flac') || track.mimeType.includes('wav')))
-
-        if (isLargeFormat) {
-          console.log('[DesktopPlayer] Large format detected, using stream proxy for:', fileName)
-          newSrc = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
-          setLoadProgress(null)
-        } else {
-          try {
-            setLoadProgress(0)
-            newSrc = await preloadTrack(track.id, track.id, {
-              onProgress: (pct) => {
-                if (metaTrackIdRef.current === thisTrackId) setLoadProgress(pct)
-              }
-            })
-            if (metaTrackIdRef.current === thisTrackId) {
-              setLoadProgress(1.0)
-              setTimeout(() => {
-                if (metaTrackIdRef.current === thisTrackId) setLoadProgress(null)
-              }, 1500)
+        // [FIX] 모든 포맷 preloader 사용 (Vercel 트래픽 0)
+        try {
+          setLoadProgress(0)
+          newSrc = await preloadTrack(track.id, track.id, {
+            onProgress: (pct) => {
+              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(pct)
             }
-          } catch (e) {
-            console.warn('[DesktopPlayer] Preloader failed, falling back to /api/stream:', e)
-            newSrc = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
-            setLoadProgress(null)
+          })
+          if (metaTrackIdRef.current === thisTrackId) {
+            setLoadProgress(1.0)
+            setTimeout(() => {
+              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(null)
+            }, 1500)
           }
+        } catch (e) {
+          console.error('[DesktopPlayer] Preloader failed:', e)
+          setLoadProgress(null)
+          return
         }
       }
 
@@ -646,8 +636,9 @@ export default function DesktopPlayer() {
       
       if (unsupported) {
         console.log('[DesktopPlayer] <audio> error on unsupported format, switching to Web Audio fallback')
-        const url = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(trackMime)}&name=${encodeURIComponent(trackName)}`
-        startFallbackPlayback(url)
+        // 이미 blob URL로 로드되어 있으므로 현재 src 사용
+        const currentSrc = audioRef.current?.src || ''
+        if (currentSrc) startFallbackPlayback(currentSrc)
         return
       }
     }

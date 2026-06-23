@@ -139,7 +139,13 @@ export default function ConnectPage() {
   }
 
   const handleJumpTo = (index: number) => {
-    setPath(path.slice(0, index + 1))
+    const newPath = path.slice(0, index + 1)
+    const targetFolderId = newPath[newPath.length - 1].id
+    // currentFolderId를 초기화하여 useEffect에서 리로드 트리거
+    if (targetFolderId !== currentFolderId) {
+      setCurrentFolderId(null)
+    }
+    setPath(newPath)
     setErrorMsg(null)
   }
 
@@ -284,19 +290,24 @@ export default function ConnectPage() {
         const metaRes = await analyzeMusicMetadata(item.id)
         if (metaRes.success && metaRes.heavyMetadata) metadata = metaRes.heavyMetadata
       } catch {}
-      const res = await fetch(`/api/stream?id=${item.id}`)
-      if (!res.ok) throw new Error('Download failed')
-      const contentLength = +(res.headers.get('Content-Length') || 0)
-      const reader = res.body?.getReader()
+      // preloader로 직접 다운로드 (Vercel 트래픽 0)
+      const { preloadTrack } = await import('@/lib/audio/audioPreloader')
+      const tokenRes = await fetch(`/api/stream-url?id=${item.id}`)
+      if (!tokenRes.ok) throw new Error('Token fetch failed')
+      const { url, token } = await tokenRes.json()
+      const audioRes = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
+      if (!audioRes.ok) throw new Error('Download failed')
+      const contentLength = +(audioRes.headers.get('Content-Length') || 0)
+      const reader = audioRes.body?.getReader()
       if (!reader) throw new Error('ReadableStream not supported')
-      const chunks = []; let received = 0
+      const chunks: Uint8Array[] = []; let received = 0
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
         chunks.push(value); received += value.length
         if (contentLength) setDownloadProgress((received / contentLength) * 100)
       }
-      await saveToOffline(item, new Blob(chunks), metadata)
+      await saveToOffline(item, new Blob(chunks as BlobPart[]), metadata)
     } catch {}
     finally { setDownloadingId(null); setDownloadProgress(0) }
   }

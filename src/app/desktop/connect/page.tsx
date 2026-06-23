@@ -442,17 +442,27 @@ export default function DesktopConnect() {
     if (downloadingId) return
     setDownloadingId(file.id)
     try {
-      // 1. 브라우저 OS 실제 로컬 PC 다운로드 트리거
-      const url = `/api/stream?id=${file.id}&mimeType=${encodeURIComponent(file.mimeType || '')}&download=true&name=${encodeURIComponent(file.name)}`
-      window.open(url, '_blank')
+      // 1. 직접 다운로드 URL 획득 (Vercel 트래픽 0)
+      const tokenRes = await fetch(`/api/stream-url?id=${file.id}`)
+      if (!tokenRes.ok) throw new Error('Token fetch failed')
+      const { url: directUrl, token } = await tokenRes.json()
 
-      // 2. 앱 자체 내부 오프라인 캐싱 (FILES -> DOWNLOADS 연동)
-      const res = await fetch(`/api/stream?id=${file.id}&mimeType=${encodeURIComponent(file.mimeType || '')}`)
-      if (!res.ok) throw new Error('Download failed')
+      // 2. 브라우저 로컬 PC 다운로드 (Direct Google Drive)
+      const downloadBlob = await fetch(directUrl, { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      }).then(r => r.arrayBuffer())
+      const blob = new Blob([downloadBlob], { type: file.mimeType || 'audio/mpeg' })
       
-      const arrayBuffer = await res.arrayBuffer()
-      const blob = new Blob([arrayBuffer], { type: file.mimeType || 'audio/mpeg' })
-      
+      // 브라우저 파일 저장 트리거
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = file.name
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(a.href)
+
+      // 3. 앱 자체 내부 오프라인 캐싱
       const { analyzeMusicMetadata } = await import('@/app/actions/metadata')
       const metaRes = await analyzeMusicMetadata(file.id)
       const metadata = metaRes.success && metaRes.heavyMetadata ? metaRes.heavyMetadata : undefined
