@@ -45,6 +45,7 @@ export default function GlobalPlayer() {
   const touchStartRef = useRef<{x: number, y: number} | null>(null)
   const retryCountRef = useRef(0)
   const metaTrackIdRef = useRef<string | null>(null)
+  const metaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -282,47 +283,48 @@ export default function GlobalPlayer() {
     const thisTrackId = track.id
     metaTrackIdRef.current = thisTrackId
 
-    // [OPT] 1단계: Google Drive 썸네일 즉시 표시 (프록시 경유)
+    // [OPT] 1단계: Google Drive 썸네일 즉시 표시 (img 태그는 CORS 불필요)
     const thumbUrl = track.thumbnailLink || (track as any).thumbnail_link
     if (thumbUrl && typeof thumbUrl === 'string' && !thumbUrl.includes('[object Object]')) {
-      // CORS 우회를 위해 프록시 사용
-      const proxied = thumbUrl.includes('googleusercontent.com') 
-        ? `/api/thumbnail?url=${encodeURIComponent(thumbUrl)}`
-        : thumbUrl
-      setLocalCoverArt(proxied)
+      setLocalCoverArt(thumbUrl)
     } else {
       setLocalCoverArt(null)
     }
 
-    // [OPT] 2단계: IndexedDB 캐시 확인 → 고해상도 교체
-    const fetchMetadata = async () => {
+    // [OPT] 2단계: IndexedDB 캐시 확인 (즉시, 비동기)
+    if (metaTimerRef.current) { clearTimeout(metaTimerRef.current); metaTimerRef.current = null }
+
+    const checkCacheAndFetch = async () => {
       const { getOfflineMetadata, saveOfflineMetadata } = await import('@/lib/db/offline')
       const offlineMeta = await getOfflineMetadata(track.id).catch(() => null)
       if (offlineMeta) {
         if (metaTrackIdRef.current !== thisTrackId) return
         if (offlineMeta.cover_art) setLocalCoverArt(offlineMeta.cover_art)
-        return
+        return // 캐시에 있으면 서버 호출 불필요
       }
       
-      // [OPT] 3단계: 서버에서 메타데이터 추출 (파일 전체 다운 필요 → 느림)
+      // [OPT] 3단계: 서버 메타데이터 추출을 3초 후 실행 (곡에 머물 때만)
       if (metaTrackIdRef.current !== thisTrackId) return
-      setMetaLoading(true)
-      try {
-        const result = await analyzeMusicMetadata(track.id)
+      metaTimerRef.current = setTimeout(async () => {
         if (metaTrackIdRef.current !== thisTrackId) return
-        if (result.success && result.data) {
-          updateTrackMetadata(track.id, result.data)
-          if (result.heavyMetadata) {
-            await saveOfflineMetadata(track.id, result.heavyMetadata)
-            if (metaTrackIdRef.current !== thisTrackId) return
-            if (result.heavyMetadata.cover_art) setLocalCoverArt(result.heavyMetadata.cover_art)
+        setMetaLoading(true)
+        try {
+          const result = await analyzeMusicMetadata(track.id)
+          if (metaTrackIdRef.current !== thisTrackId) return
+          if (result.success && result.data) {
+            updateTrackMetadata(track.id, result.data)
+            if (result.heavyMetadata) {
+              await saveOfflineMetadata(track.id, result.heavyMetadata)
+              if (metaTrackIdRef.current !== thisTrackId) return
+              if (result.heavyMetadata.cover_art) setLocalCoverArt(result.heavyMetadata.cover_art)
+            }
           }
-        }
-      } catch (e) { console.error(e) } 
-      finally { if (metaTrackIdRef.current === thisTrackId) setMetaLoading(false) }
+        } catch (e) { console.error(e) } 
+        finally { if (metaTrackIdRef.current === thisTrackId) setMetaLoading(false) }
+      }, 3000)
     }
 
-    fetchMetadata()
+    checkCacheAndFetch()
 
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
     if (directAudioRef.current) { directAudioRef.current.pause(); directAudioRef.current.src = ''; }
@@ -430,6 +432,7 @@ export default function GlobalPlayer() {
     loadAudioSource()
 
     return () => {
+      if (metaTimerRef.current) { clearTimeout(metaTimerRef.current); metaTimerRef.current = null }
       if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
       if (directAudioRef.current) { directAudioRef.current.pause(); directAudioRef.current.src = ''; }
     }

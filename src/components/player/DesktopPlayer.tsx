@@ -114,6 +114,7 @@ export default function DesktopPlayer() {
   const [playlistAdded, setPlaylistAdded] = useState(false)
   const preloadAbortRef = useRef<(() => void) | null>(null)
   const metaTrackIdRef = useRef<string | null>(null)
+  const metaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   const handleTogglePlay = () => {
     if (equalizerRef.current?.audioContext?.state === 'suspended') {
@@ -199,19 +200,18 @@ export default function DesktopPlayer() {
     const thisTrackId = track.id
     metaTrackIdRef.current = thisTrackId
 
-    // [OPT] 1단계: Google Drive 썸네일 즉시 표시
+    // [OPT] 1단계: Google Drive 썸네일 즉시 표시 (img 태그는 CORS 불필요)
     const thumbUrl = track.thumbnailLink || (track as any).thumbnail_link
     if (thumbUrl && typeof thumbUrl === 'string' && !thumbUrl.includes('[object Object]')) {
-      const proxied = thumbUrl.includes('googleusercontent.com') 
-        ? `/api/thumbnail?url=${encodeURIComponent(thumbUrl)}`
-        : thumbUrl
-      setLocalCoverArt(proxied)
+      setLocalCoverArt(thumbUrl)
     } else {
       setLocalCoverArt(null)
     }
 
-    // [OPT] 2단계: IndexedDB 캐시 → 고해상도 교체
-    const fetchMeta = async () => {
+    // [OPT] 2단계: IndexedDB 캐시 확인 + 3초 후 서버 메타데이터
+    if (metaTimerRef.current) { clearTimeout(metaTimerRef.current); metaTimerRef.current = null }
+
+    const checkCacheAndFetch = async () => {
       const { getOfflineMetadata, saveOfflineMetadata } = await import('@/lib/db/offline')
       const offlineMeta = await getOfflineMetadata(track.id).catch(() => null)
       if (offlineMeta) {
@@ -219,24 +219,26 @@ export default function DesktopPlayer() {
         if (offlineMeta.cover_art) setLocalCoverArt(offlineMeta.cover_art)
         return
       }
-      // [OPT] 3단계: 서버 메타데이터 추출
       if (metaTrackIdRef.current !== thisTrackId) return
-      setMetaLoading(true)
-      try {
-        const result = await analyzeMusicMetadata(track.id)
+      metaTimerRef.current = setTimeout(async () => {
         if (metaTrackIdRef.current !== thisTrackId) return
-        if (result.success && result.data) {
-          updateTrackMetadata(track.id, result.data)
-          if (result.heavyMetadata) {
-            await saveOfflineMetadata(track.id, result.heavyMetadata)
-            if (metaTrackIdRef.current !== thisTrackId) return
-            if (result.heavyMetadata.cover_art) setLocalCoverArt(result.heavyMetadata.cover_art)
+        setMetaLoading(true)
+        try {
+          const result = await analyzeMusicMetadata(track.id)
+          if (metaTrackIdRef.current !== thisTrackId) return
+          if (result.success && result.data) {
+            updateTrackMetadata(track.id, result.data)
+            if (result.heavyMetadata) {
+              await saveOfflineMetadata(track.id, result.heavyMetadata)
+              if (metaTrackIdRef.current !== thisTrackId) return
+              if (result.heavyMetadata.cover_art) setLocalCoverArt(result.heavyMetadata.cover_art)
+            }
           }
-        }
-      } catch (e) { console.error(e) }
-      finally { if (metaTrackIdRef.current === thisTrackId) setMetaLoading(false) }
+        } catch (e) { console.error(e) }
+        finally { if (metaTrackIdRef.current === thisTrackId) setMetaLoading(false) }
+      }, 3000)
     }
-    fetchMeta()
+    checkCacheAndFetch()
 
     // [NEW] 오디오 소스 로딩 (Preloader 기반 직접 스트리밍)
     const loadAudioSource = async () => {
@@ -322,7 +324,10 @@ export default function DesktopPlayer() {
 
     loadAudioSource()
 
-    return () => { cleanupFallback() }
+    return () => {
+      if (metaTimerRef.current) { clearTimeout(metaTimerRef.current); metaTimerRef.current = null }
+      cleanupFallback()
+    }
   }, [track?.id])
 
   // [NEW] 다음곡 프리로드 + 이전곡 캐시 유지
