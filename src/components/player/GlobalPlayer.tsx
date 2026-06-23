@@ -8,9 +8,10 @@ import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
 import { needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
 import { unlockAllAudioContexts } from '@/lib/audio/sharedAudioCtx'
+import { preloadTrack, getCachedUrl, releaseAllExcept, isCached } from '@/lib/audio/audioPreloader'
 import { 
   Play, Pause, SkipBack, SkipForward, ChevronDown, ListMusic, MoreHorizontal,
-  Shuffle, Volume2, VolumeX, Mic2, Gauge, Repeat, Repeat1, Music, Moon, Settings2, Bookmark
+  Shuffle, Volume2, VolumeX, Mic2, Gauge, Repeat, Repeat1, Music, Moon, Settings2, Bookmark, Plus, Check
 } from 'lucide-react'
 import { motion, AnimatePresence, PanInfo } from 'framer-motion'
 
@@ -21,7 +22,8 @@ const Icon = {
   Shuffle: Shuffle as any, Volume2: Volume2 as any, VolumeX: VolumeX as any,
   Mic2: Mic2 as any, Gauge: Gauge as any, Repeat: Repeat as any,
   Repeat1: Repeat1 as any, Music: Music as any, Moon: Moon as any,
-  Settings2: Settings2 as any, Bookmark: Bookmark as any
+  Settings2: Settings2 as any, Bookmark: Bookmark as any,
+  Plus: Plus as any, Check: Check as any
 }
 
 // 가사 캐시 (메모리)
@@ -42,6 +44,7 @@ export default function GlobalPlayer() {
   const equalizerRef = useRef<Equalizer | null>(null)
   const touchStartRef = useRef<{x: number, y: number} | null>(null)
   const retryCountRef = useRef(0)
+  const metaTrackIdRef = useRef<string | null>(null)
   
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -61,6 +64,12 @@ export default function GlobalPlayer() {
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off')
   const [sleepTimer, setSleepTimer] = useState<number>(0)
   const [showFullTitle, setShowFullTitle] = useState(false)
+  const [loadProgress, setLoadProgress] = useState<number | null>(null)
+  const [bufferProgress, setBufferProgress] = useState(0)
+  const [showPlaylistPopup, setShowPlaylistPopup] = useState(false)
+  const [playlists, setPlaylists] = useState<any[]>([])
+  const [playlistAdded, setPlaylistAdded] = useState(false)
+  const preloadAbortRef = useRef<(() => void) | null>(null)
   
   const handleTogglePlay = () => {
     unlockAllAudioContexts().catch(() => {})
@@ -266,103 +275,170 @@ export default function GlobalPlayer() {
     if (!track) return
     setCurrentTime(0)
     setMetaLoading(false)
+    setPlaylistAdded(false)
+    setBufferProgress(0)
+
+    // [FIX] 곡 빠르게 넘길 때 이전 곡의 커버아트가 덮어쓰는 문제 방지
+    const thisTrackId = track.id
+    metaTrackIdRef.current = thisTrackId
 
     const fetchMetadata = async () => {
       const { getOfflineMetadata, saveOfflineMetadata } = await import('@/lib/db/offline')
       const offlineMeta = await getOfflineMetadata(track.id).catch(() => null)
       if (offlineMeta) {
+        if (metaTrackIdRef.current !== thisTrackId) return // stale
         if (offlineMeta.cover_art) setLocalCoverArt(offlineMeta.cover_art)
         else setLocalCoverArt(null)
         return
       }
       
+      if (metaTrackIdRef.current !== thisTrackId) return // stale
       setLocalCoverArt(null)
       setMetaLoading(true)
       try {
         const result = await analyzeMusicMetadata(track.id)
+        if (metaTrackIdRef.current !== thisTrackId) return // stale — 곡이 이미 바뀜
         if (result.success && result.data) {
           updateTrackMetadata(track.id, result.data)
           if (result.heavyMetadata) {
             await saveOfflineMetadata(track.id, result.heavyMetadata)
+            if (metaTrackIdRef.current !== thisTrackId) return // stale
             if (result.heavyMetadata.cover_art) setLocalCoverArt(result.heavyMetadata.cover_art)
           }
         }
       } catch (e) { console.error(e) } 
-      finally { setMetaLoading(false) }
+      finally { if (metaTrackIdRef.current === thisTrackId) setMetaLoading(false) }
     }
 
     fetchMetadata()
 
-    // Build stream URL
-    const newSrc = ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob')))
-      ? (track as any).src 
-      : `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
-
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
     if (directAudioRef.current) { directAudioRef.current.pause(); directAudioRef.current.src = ''; }
 
-    // [NEW] Check if this format needs direct audio playback without Equalizer
-    if (needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)) {
-      console.log('[GlobalPlayer] iOS unsupported format detected, using Direct Audio')
-      setIsFallbackMode(true)
-      
-      if (directAudioRef.current) {
-        const isSameOrigin = newSrc.startsWith('blob:') || newSrc.startsWith('data:')
-        if (isSameOrigin) {
-          directAudioRef.current.crossOrigin = "anonymous"
-        } else {
-          directAudioRef.current.removeAttribute('crossorigin')
+    // [NEW] 오디오 소스 로딩 (Preloader 기반 직접 스트리밍)
+    const loadAudioSource = async () => {
+      let newSrc: string
+
+      // blob/http 소스가 이미 있으면 (오프라인 파일 등) 그대로 사용
+      if ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob'))) {
+        newSrc = (track as any).src
+        setLoadProgress(null) // 오프라인 파일은 이미 로컬
+      } else {
+        // [OFFLINE MODE] 오프라인 모드에서는 스트리밍 차단
+        const { useSettingsStore } = await import('@/lib/store/useSettingsStore')
+        const isOffline = useSettingsStore.getState().offlineMode
+        if (isOffline) {
+          console.log('[GlobalPlayer] Offline mode ON — streaming blocked for:', track.name)
+          setLoadProgress(null)
+          return // 스트리밍 시작하지 않음
         }
-        directAudioRef.current.src = newSrc
-        directAudioRef.current.playbackRate = playbackRate
-        directAudioRef.current.volume = isMuted ? 0 : volume
+
+        // [NEW] Google Drive에서 직접 다운로드 (Vercel 경유 안 함)
+        try {
+          setLoadProgress(0)
+          newSrc = await preloadTrack(track.id, track.id, {
+            onProgress: (pct) => {
+              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(pct)
+            }
+          })
+          // 다운로드 완료 → 1.0 유지 후 1.5초 뒤 fade out
+          if (metaTrackIdRef.current === thisTrackId) {
+            setLoadProgress(1.0)
+            setTimeout(() => {
+              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(null)
+            }, 1500)
+          }
+        } catch (e) {
+          console.warn('[GlobalPlayer] Preloader failed, falling back to /api/stream:', e)
+          // 프리로더 실패 시 기존 프록시 폴백
+          newSrc = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
+          setLoadProgress(null)
+        }
+      }
+
+      // 포맷별 재생 경로 분기
+      if (needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)) {
+        console.log('[GlobalPlayer] iOS unsupported format detected, using Direct Audio')
+        setIsFallbackMode(true)
+        
+        if (directAudioRef.current) {
+          directAudioRef.current.crossOrigin = "anonymous"
+          directAudioRef.current.src = newSrc
+          directAudioRef.current.playbackRate = playbackRate
+          directAudioRef.current.volume = isMuted ? 0 : volume
+          retryCountRef.current = 0
+          directAudioRef.current.load()
+          
+          const handleCanPlay = () => {
+            if ((track as any).initialPosition) directAudioRef.current!.currentTime = (track as any).initialPosition
+            if (isPlaying) {
+              unlockAllAudioContexts().catch(() => {})
+              directAudioRef.current!.play().catch((e) => console.warn('iOS direct play blocked:', e))
+            }
+            directAudioRef.current!.removeEventListener('canplaythrough', handleCanPlay)
+          }
+          directAudioRef.current.addEventListener('canplaythrough', handleCanPlay)
+        }
+        return
+      }
+
+      // Standard <audio> playback path
+      setIsFallbackMode(false)
+      if (audioRef.current) {
+        audioRef.current.crossOrigin = "anonymous"
+        audioRef.current.src = newSrc
+        audioRef.current.playbackRate = playbackRate
+        audioRef.current.volume = isMuted ? 0 : volume
         retryCountRef.current = 0
-        directAudioRef.current.load()
+        audioRef.current.load()
         
         const handleCanPlay = () => {
-          if ((track as any).initialPosition) directAudioRef.current!.currentTime = (track as any).initialPosition
+          if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
           if (isPlaying) {
             unlockAllAudioContexts().catch(() => {})
-            directAudioRef.current!.play().catch((e) => console.warn('iOS direct play blocked:', e))
+            audioRef.current!.play().catch((e) => console.warn('iOS play blocked:', e))
           }
-          directAudioRef.current!.removeEventListener('canplaythrough', handleCanPlay)
+          audioRef.current!.removeEventListener('canplaythrough', handleCanPlay)
         }
-        directAudioRef.current.addEventListener('canplaythrough', handleCanPlay)
+        audioRef.current.addEventListener('canplaythrough', handleCanPlay)
       }
-      return
     }
 
-    // Standard <audio> playback path
-    setIsFallbackMode(false)
-    if (audioRef.current) {
-      const isSameOrigin = newSrc.startsWith('blob:') || newSrc.startsWith('data:')
-      if (isSameOrigin) {
-        audioRef.current.crossOrigin = "anonymous"
-      } else {
-        audioRef.current.removeAttribute('crossorigin')
-      }
-      audioRef.current.src = newSrc
-      audioRef.current.playbackRate = playbackRate
-      audioRef.current.volume = isMuted ? 0 : volume
-      retryCountRef.current = 0
-      audioRef.current.load()
-      
-      const handleCanPlay = () => {
-        if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
-        if (isPlaying) {
-          unlockAllAudioContexts().catch(() => {})
-          audioRef.current!.play().catch((e) => console.warn('iOS play blocked:', e))
-        }
-        audioRef.current!.removeEventListener('canplaythrough', handleCanPlay)
-      }
-      audioRef.current.addEventListener('canplaythrough', handleCanPlay)
-    }
+    loadAudioSource()
 
     return () => {
       if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
       if (directAudioRef.current) { directAudioRef.current.pause(); directAudioRef.current.src = ''; }
     }
   }, [track?.id])
+
+  // [NEW] 다음곡 프리로드 + 이전곡 캐시 유지
+  useEffect(() => {
+    if (!track || !playlist.length) return
+    const currentIndex = playlist.findIndex(p => p.id === track.id)
+    if (currentIndex === -1) return
+
+    // 이전 프리로드 취소
+    if (preloadAbortRef.current) {
+      preloadAbortRef.current()
+      preloadAbortRef.current = null
+    }
+
+    // 다음곡 프리로드 (blob/src가 없는 경우에만)
+    const nextTrack = playlist[currentIndex + 1]
+    if (nextTrack && !(nextTrack as any).src && !isCached(nextTrack.id)) {
+      console.log('[GlobalPlayer] Pre-fetching next track:', nextTrack.name || nextTrack.title)
+      const controller = new AbortController()
+      preloadAbortRef.current = () => controller.abort()
+      preloadTrack(nextTrack.id, nextTrack.id, { signal: controller.signal }).catch(() => {})
+    }
+
+    // 캐시 정리: prev + current + next만 유지
+    const keepIds = [track.id]
+    if (currentIndex > 0) keepIds.push(playlist[currentIndex - 1].id)
+    if (nextTrack) keepIds.push(nextTrack.id)
+    releaseAllExcept(keepIds)
+  }, [track?.id, playlist])
 
   // 재생 상태 동기화
   useEffect(() => {
@@ -420,6 +496,14 @@ export default function GlobalPlayer() {
       const t = activeAudio.currentTime
       setCurrentTime(t)
       seekTimeRef.current = t
+    }
+  }
+  // 버퍼 진행률 추적
+  const handleProgress = () => {
+    const activeAudio = isFallbackMode ? directAudioRef.current : audioRef.current
+    if (activeAudio && activeAudio.buffered.length > 0 && activeAudio.duration > 0) {
+      const bufferedEnd = activeAudio.buffered.end(activeAudio.buffered.length - 1)
+      setBufferProgress(bufferedEnd / activeAudio.duration)
     }
   }
   const handleLoadedMetadata = () => { 
@@ -585,14 +669,16 @@ export default function GlobalPlayer() {
         onTimeUpdate={handleTimeUpdate} 
         onLoadedMetadata={handleLoadedMetadata} 
         onEnded={handleNextWrapped}
-        onError={handleAudioError} 
+        onError={handleAudioError}
+        onProgress={handleProgress}
       />
       <audio 
         ref={directAudioRef} preload="auto" playsInline 
         onTimeUpdate={handleTimeUpdate} 
         onLoadedMetadata={handleLoadedMetadata} 
         onEnded={handleNextWrapped}
-        onError={handleAudioError} 
+        onError={handleAudioError}
+        onProgress={handleProgress}
       />
 
       {/* ---- 미니 플레이어 (Precision Instrument Style) ---- */}
@@ -603,9 +689,10 @@ export default function GlobalPlayer() {
           style={{ background: 'var(--bg-surface)' }}
           onClick={() => setExpanded(true)}
         >
-          {/* 상단 프로그레스 바 */}
+          {/* 상단 프로그레스 바 (버퍼 + 재생) */}
           <div className="absolute top-0 left-0 right-0 h-[3px] bg-[var(--bg-container-highest)]">
-            <div className="h-full bg-[var(--tertiary)] transition-all duration-200" style={{ width: `${progressPercent}%` }} />
+            <div className="absolute inset-0 h-full bg-[var(--tertiary)] transition-all duration-500" style={{ width: `${(loadProgress !== null ? loadProgress : bufferProgress) * 100}%`, opacity: 0.25 }} />
+            <div className="absolute inset-0 h-full bg-[var(--tertiary)] transition-all duration-200" style={{ width: `${progressPercent}%` }} />
           </div>
           <div className="flex items-center h-full px-3 gap-3">
             {/* 앨범아트 */}
@@ -819,10 +906,64 @@ export default function GlobalPlayer() {
                     >
                       <Icon.Bookmark size={20} fill="currentColor" />
                     </button>
+                    <button 
+                      onClick={async (e) => { 
+                        e.stopPropagation();
+                        if (!showPlaylistPopup) {
+                          try {
+                            const { getPlaylists } = await import('@/app/actions/playlist')
+                            const pls = await getPlaylists()
+                            setPlaylists(pls)
+                          } catch(err) { setPlaylists([]) }
+                        }
+                        setShowPlaylistPopup(!showPlaylistPopup)
+                        setPlaylistAdded(false)
+                      }} 
+                      className={`p-3 bg-[var(--bg-surface)] transition-colors border border-[var(--border-strong)] rounded-full shadow-sm active:scale-95 ${showPlaylistPopup ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--tertiary)]'}`}
+                    >
+                      <Icon.Plus size={20} />
+                    </button>
                   </div>
+                  {/* 플레이리스트 추가 팝업 */}
+                  <AnimatePresence>
+                    {showPlaylistPopup && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                        className="mt-2 bg-[var(--bg-container)] border border-[var(--border-strong)] rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {playlists.length === 0 ? (
+                          <p className="px-4 py-3 text-xs text-[var(--text-muted)] font-['Work_Sans']">플레이리스트가 없습니다</p>
+                        ) : (
+                          playlists.map((pl: any) => (
+                            <button
+                              key={pl.id}
+                              onClick={async () => {
+                                try {
+                                  const { addTrackToPlaylist } = await import('@/app/actions/playlist')
+                                  await addTrackToPlaylist(pl.id, track.id)
+                                  setPlaylistAdded(true)
+                                  setTimeout(() => setShowPlaylistPopup(false), 800)
+                                } catch(err) { alert('추가 실패') }
+                              }}
+                              className="w-full px-4 py-3 text-left hover:bg-[var(--bg-container-high)] transition-colors flex items-center gap-2 border-b border-[var(--border-light)] last:border-b-0"
+                            >
+                              <Icon.ListMusic size={16} className="text-[var(--tertiary)] shrink-0" />
+                              <span className="text-sm text-[var(--text-main)] truncate font-['Work_Sans']">{pl.name}</span>
+                            </button>
+                          ))
+                        )}
+                        {playlistAdded && (
+                          <div className="px-4 py-2 bg-[var(--tertiary)]/10 text-[var(--tertiary)] text-xs font-['Work_Sans'] font-bold flex items-center gap-1">
+                            <Icon.Check size={14} /> 추가 완료!
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
-                {/* 진행 바 */}
+                {/* 진행 바 — 3-layer: 배경 → 버퍼(흐림) → 재생(진함) */}
                 <div className="w-full mb-6 landscape:mb-2 group relative px-1">
                   <input 
                     type="range" min={0} max={validDuration || 100} step="any"
@@ -832,8 +973,17 @@ export default function GlobalPlayer() {
                     onTouchEnd={handleSeekEnd}
                     className="absolute inset-0 w-full h-5 -translate-y-1 opacity-0 cursor-pointer z-10" 
                   />
-                  <div className="h-1.5 bg-[var(--bg-container-highest)] w-full overflow-hidden rounded-full shadow-[var(--shadow-pressed)]">
-                    <div className="h-full bg-[var(--tertiary)] relative rounded-full" style={{ width: `${progressPercent}%` }} />
+                  <div className="h-1.5 bg-[var(--bg-container-highest)] w-full overflow-hidden rounded-full shadow-[var(--shadow-pressed)] relative">
+                    {/* 버퍼 진행 (다운로드 또는 audio.buffered) */}
+                    <div 
+                      className="absolute inset-0 h-full bg-[var(--tertiary)] rounded-full transition-all duration-500 ease-out" 
+                      style={{ 
+                        width: `${(loadProgress !== null ? loadProgress : bufferProgress) * 100}%`,
+                        opacity: 0.2 
+                      }} 
+                    />
+                    {/* 재생 진행 */}
+                    <div className="absolute inset-0 h-full bg-[var(--tertiary)] rounded-full transition-[width] duration-100" style={{ width: `${progressPercent}%` }} />
                   </div>
                   <div className="flex justify-between text-[11px] text-[var(--text-muted)] mt-2 font-['Work_Sans'] font-medium">
                     <span>{formatTime(currentTime)}</span><span>{formatTime(validDuration)}</span>
@@ -856,23 +1006,25 @@ export default function GlobalPlayer() {
 
                 {/* 하단 기능 버튼 */}
                 <div className="flex justify-between items-center w-full px-2 pb-4 landscape:pb-0">
-                  <button onClick={() => setViewMode(viewMode === 'lyrics' ? 'art' : 'lyrics')} className={`flex-1 flex flex-col items-center gap-1.5 p-2 transition-all ${viewMode === 'lyrics' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+                  <button onClick={() => setViewMode(viewMode === 'lyrics' ? 'art' : 'lyrics')} className={`flex-1 flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all ${viewMode === 'lyrics' ? 'text-[var(--tertiary)] bg-[var(--tertiary)]/15' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
                     <Icon.Mic2 size={22} />
                     <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">Lyrics</span>
                   </button>
-                  <button onClick={() => setViewMode(viewMode === 'eq' ? 'art' : 'eq')} className={`flex-1 flex flex-col items-center gap-1.5 p-2 transition-all ${viewMode === 'eq' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+                  <button onClick={() => setViewMode(viewMode === 'eq' ? 'art' : 'eq')} className={`flex-1 flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all ${viewMode === 'eq' ? 'text-[var(--tertiary)] bg-[var(--tertiary)]/15' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
                     <Icon.Settings2 size={22} />
                     <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">EQ</span>
                   </button>
-                  <button onClick={() => setIsShuffle(!isShuffle)} className={`flex-1 flex flex-col items-center gap-1.5 p-2 transition-colors ${isShuffle ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+                  <button onClick={() => setIsShuffle(!isShuffle)} className={`flex-1 flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all relative ${isShuffle ? 'text-[var(--tertiary)] bg-[var(--tertiary)]/15' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
                     <Icon.Shuffle size={20} />
                     <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">Shuffle</span>
+                    {isShuffle && <span className="absolute top-1 right-1/2 translate-x-1/2 w-1.5 h-1.5 rounded-full bg-[var(--tertiary)]" />}
                   </button>
-                  <button onClick={toggleRepeat} className={`flex-1 flex flex-col items-center gap-1.5 p-2 transition-colors ${repeatMode !== 'off' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+                  <button onClick={toggleRepeat} className={`flex-1 flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all relative ${repeatMode !== 'off' ? 'text-[var(--tertiary)] bg-[var(--tertiary)]/15' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
                     {repeatMode === 'one' ? <Icon.Repeat1 size={20} /> : <Icon.Repeat size={20} />}
-                    <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">Repeat</span>
+                    <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">{repeatMode === 'one' ? 'Repeat 1' : 'Repeat'}</span>
+                    {repeatMode !== 'off' && <span className="absolute top-1 right-1/2 translate-x-1/2 w-1.5 h-1.5 rounded-full bg-[var(--tertiary)]" />}
                   </button>
-                  <button onClick={() => setViewMode(viewMode === 'queue' ? 'art' : 'queue')} className={`flex-1 flex flex-col items-center gap-1.5 p-2 transition-all ${viewMode === 'queue' ? 'text-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
+                  <button onClick={() => setViewMode(viewMode === 'queue' ? 'art' : 'queue')} className={`flex-1 flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all ${viewMode === 'queue' ? 'text-[var(--tertiary)] bg-[var(--tertiary)]/15' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}>
                     <Icon.ListMusic size={22} />
                     <span className="text-[9px] font-['Work_Sans'] font-bold tracking-wider uppercase text-center">Queue</span>
                   </button>

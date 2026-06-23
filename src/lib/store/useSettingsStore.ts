@@ -34,6 +34,7 @@ interface SettingsState {
   highQualityAudio: boolean
   themeColor: string
   showLyrics: boolean
+  offlineMode: boolean
   
   setAiProvider: (provider: AIProvider) => void
   setAiApiKey: (provider: AIProvider, key: string) => void
@@ -43,6 +44,7 @@ interface SettingsState {
   setHighQualityAudio: (enable: boolean) => void
   setThemeColor: (color: string) => void
   setShowLyrics: (enable: boolean) => void
+  setOfflineMode: (enable: boolean) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -64,6 +66,7 @@ export const useSettingsStore = create<SettingsState>()(
       highQualityAudio: false,
       themeColor: 'var(--primary)',
       showLyrics: true,
+      offlineMode: false,
 
       setAiProvider: (provider) => set({ aiProvider: provider }),
       
@@ -85,7 +88,8 @@ export const useSettingsStore = create<SettingsState>()(
       setAutoPlayNext: (enable) => set({ autoPlayNext: enable }),
       setHighQualityAudio: (enable) => set({ highQualityAudio: enable }),
       setThemeColor: (color) => set({ themeColor: color }),
-      setShowLyrics: (enable) => set({ showLyrics: enable })
+      setShowLyrics: (enable) => set({ showLyrics: enable }),
+      setOfflineMode: (enable) => set({ offlineMode: enable })
     }),
     {
       name: 'lala-settings-storage',

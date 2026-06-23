@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { 
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, 
   Repeat, Repeat1, Mic2, ListMusic, Music, Gauge, ChevronUp, ChevronDown,
-  Settings2, Bookmark, X, Moon
+  Settings2, Bookmark, X, Moon, Plus, Check
 } from 'lucide-react'
 import { usePlayerStore} from '@/lib/store/usePlayerStore'
 import { analyzeMusicMetadata } from '@/app/actions/metadata'
@@ -12,6 +12,7 @@ import { getExternalLyrics } from '@/app/actions/lyrics'
 import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
 import { WebAudioFallbackPlayer, needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
+import { preloadTrack, getCachedUrl, releaseAllExcept, isCached } from '@/lib/audio/audioPreloader'
 import { AnimatePresence, motion } from 'framer-motion'
 
 const Icon = {
@@ -20,7 +21,8 @@ const Icon = {
   Shuffle: Shuffle as any, Repeat: Repeat as any, Repeat1: Repeat1 as any,
   Mic2: Mic2 as any, ListMusic: ListMusic as any, Music: Music as any,
   Gauge: Gauge as any, ChevronUp: ChevronUp as any, ChevronDown: ChevronDown as any,
-  Settings2: Settings2 as any, Bookmark: Bookmark as any, X: X as any, Moon: Moon as any
+  Settings2: Settings2 as any, Bookmark: Bookmark as any, X: X as any, Moon: Moon as any,
+  Plus: Plus as any, Check: Check as any
 }
 
 // 가사 캐시 (메모리)
@@ -105,6 +107,13 @@ export default function DesktopPlayer() {
   const [expandedView, setExpandedView] = useState<'art' | 'lyrics' | 'queue' | 'eq'>('lyrics')
   const [sleepTimer, setSleepTimer] = useState(0)
   const [lyricsFontSize, setLyricsFontSize] = useState(18) // px, 10~50 range, step 4
+  const [loadProgress, setLoadProgress] = useState<number | null>(null)
+  const [bufferProgress, setBufferProgress] = useState(0)
+  const [showPlaylistPopup, setShowPlaylistPopup] = useState(false)
+  const [dpPlaylists, setDpPlaylists] = useState<any[]>([])
+  const [playlistAdded, setPlaylistAdded] = useState(false)
+  const preloadAbortRef = useRef<(() => void) | null>(null)
+  const metaTrackIdRef = useRef<string | null>(null)
   
   const handleTogglePlay = () => {
     if (equalizerRef.current?.audioContext?.state === 'suspended') {
@@ -185,80 +194,141 @@ export default function DesktopPlayer() {
     if (!track) return
     setCurrentTime(0)
     setMetaLoading(false)
+    setBufferProgress(0)
+
+    const thisTrackId = track.id
+    metaTrackIdRef.current = thisTrackId
 
     // 메타데이터 로드
     const fetchMeta = async () => {
       const { getOfflineMetadata, saveOfflineMetadata } = await import('@/lib/db/offline')
       const offlineMeta = await getOfflineMetadata(track.id).catch(() => null)
       if (offlineMeta) {
+        if (metaTrackIdRef.current !== thisTrackId) return
         if (offlineMeta.cover_art) setLocalCoverArt(offlineMeta.cover_art)
         else setLocalCoverArt(null)
         return
       }
+      if (metaTrackIdRef.current !== thisTrackId) return
       setLocalCoverArt(null)
       setMetaLoading(true)
       try {
         const result = await analyzeMusicMetadata(track.id)
+        if (metaTrackIdRef.current !== thisTrackId) return
         if (result.success && result.data) {
           updateTrackMetadata(track.id, result.data)
           if (result.heavyMetadata) {
             await saveOfflineMetadata(track.id, result.heavyMetadata)
+            if (metaTrackIdRef.current !== thisTrackId) return
             if (result.heavyMetadata.cover_art) setLocalCoverArt(result.heavyMetadata.cover_art)
           }
         }
       } catch (e) { console.error(e) }
-      finally { setMetaLoading(false) }
+      finally { if (metaTrackIdRef.current === thisTrackId) setMetaLoading(false) }
     }
     fetchMeta()
 
-    // Build stream URL
-    const newSrc = ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob')))
-      ? (track as any).src
-      : `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
+    // [NEW] 오디오 소스 로딩 (Preloader 기반 직접 스트리밍)
+    const loadAudioSource = async () => {
+      let newSrc: string
 
-    // [NEW] Check if this format needs Web Audio fallback
-    if (needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)) {
-      console.log('[DesktopPlayer] Unsupported format detected, using Web Audio fallback')
-      startFallbackPlayback(newSrc)
-      return
-    }
+      // blob/http 소스가 이미 있으면 그대로 사용
+      if ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob'))) {
+        newSrc = (track as any).src
+        setLoadProgress(null)
+      } else {
+        // [OFFLINE MODE] 오프라인 모드에서는 스트리밍 차단
+        const { useSettingsStore } = await import('@/lib/store/useSettingsStore')
+        const isOffline = useSettingsStore.getState().offlineMode
+        if (isOffline) {
+          console.log('[DesktopPlayer] Offline mode ON — streaming blocked for:', track.name)
+          setLoadProgress(null)
+          return
+        }
 
-    // Standard <audio> playback path
-    cleanupFallback()
+        // [NEW] Google Drive에서 직접 다운로드
+        try {
+          setLoadProgress(0)
+          newSrc = await preloadTrack(track.id, track.id, {
+            onProgress: (pct) => {
+              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(pct)
+            }
+          })
+          if (metaTrackIdRef.current === thisTrackId) {
+            setLoadProgress(1.0)
+            setTimeout(() => {
+              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(null)
+            }, 1500)
+          }
+        } catch (e) {
+          console.warn('[DesktopPlayer] Preloader failed, falling back to /api/stream:', e)
+          newSrc = `/api/stream?id=${track.id}&mimeType=${encodeURIComponent(track.mimeType || '')}&name=${encodeURIComponent(track.name || track.title || 'music.mp3')}`
+          setLoadProgress(null)
+        }
+      }
 
-    // 오디오 소스설정
-    if (audioRef.current) {
-      if (audioRef.current.src.indexOf(track.id) === -1) {
-        // [FIX] Do NOT set crossOrigin="anonymous" for redirected Google Drive streams.
-        // createMediaElementSource() treats cross-origin audio as tainted → silent output.
-        // Only set crossOrigin for blob/local sources.
-        const isSameOrigin = newSrc.startsWith('blob:') || newSrc.startsWith('data:')
-        if (isSameOrigin) {
+      // [NEW] Check if this format needs Web Audio fallback
+      if (needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)) {
+        console.log('[DesktopPlayer] Unsupported format detected, using Web Audio fallback')
+        startFallbackPlayback(newSrc)
+        return
+      }
+
+      // Standard <audio> playback path
+      cleanupFallback()
+
+      if (audioRef.current) {
+        if (audioRef.current.src.indexOf(track.id) === -1) {
           audioRef.current.crossOrigin = "anonymous"
-        } else {
-          audioRef.current.removeAttribute('crossorigin')
-        }
-        audioRef.current.src = newSrc
-        audioRef.current.playbackRate = playbackRate
-        audioRef.current.volume = isMuted ? 0 : volume
-        retryCountRef.current = 0
-        audioRef.current.load()
-        
-        const handleCanPlay = () => {
-          if ((track as any).initialPosition) {
-            if (audioRef.current) audioRef.current.currentTime = (track as any).initialPosition
+          audioRef.current.src = newSrc
+          audioRef.current.playbackRate = playbackRate
+          audioRef.current.volume = isMuted ? 0 : volume
+          retryCountRef.current = 0
+          audioRef.current.load()
+          
+          const handleCanPlay = () => {
+            if ((track as any).initialPosition) {
+              if (audioRef.current) audioRef.current.currentTime = (track as any).initialPosition
+            }
+            if (isPlaying && audioRef.current) {
+              audioRef.current.play().catch((e) => console.warn('Desktop play blocked:', e))
+            }
+            audioRef.current?.removeEventListener('canplaythrough', handleCanPlay)
           }
-          if (isPlaying && audioRef.current) {
-            audioRef.current.play().catch((e) => console.warn('Desktop play blocked:', e))
-          }
-          audioRef.current?.removeEventListener('canplaythrough', handleCanPlay)
+          audioRef.current.addEventListener('canplaythrough', handleCanPlay)
         }
-        audioRef.current.addEventListener('canplaythrough', handleCanPlay)
       }
     }
 
+    loadAudioSource()
+
     return () => { cleanupFallback() }
   }, [track?.id])
+
+  // [NEW] 다음곡 프리로드 + 이전곡 캐시 유지
+  useEffect(() => {
+    if (!track || !playlist.length) return
+    const currentIndex = playlist.findIndex(p => p.id === track.id)
+    if (currentIndex === -1) return
+
+    if (preloadAbortRef.current) {
+      preloadAbortRef.current()
+      preloadAbortRef.current = null
+    }
+
+    const nextTrack = playlist[currentIndex + 1]
+    if (nextTrack && !(nextTrack as any).src && !isCached(nextTrack.id)) {
+      console.log('[DesktopPlayer] Pre-fetching next track:', nextTrack.name || nextTrack.title)
+      const controller = new AbortController()
+      preloadAbortRef.current = () => controller.abort()
+      preloadTrack(nextTrack.id, nextTrack.id, { signal: controller.signal }).catch(() => {})
+    }
+
+    const keepIds = [track.id]
+    if (currentIndex > 0) keepIds.push(playlist[currentIndex - 1].id)
+    if (nextTrack) keepIds.push(nextTrack.id)
+    releaseAllExcept(keepIds)
+  }, [track?.id, playlist])
 
   // 재생 상태 리스너 (강제 동기화)
   useEffect(() => {
@@ -293,24 +363,19 @@ export default function DesktopPlayer() {
     } else {
       audioRef.current.pause()
     }
-  }, [isPlaying, track?.id, isFallbackMode]) // Added track?.id so it acts on new track loads if isPlaying remains true
+  }, [isPlaying, track?.id, isFallbackMode])
 
   // EQ 초기화 — canplaythrough에서 안전하게 한번만 생성
-  // [FIX] For cross-origin streams (Google Drive redirect), createMediaElementSource
-  // produces silence (CORS tainted). Only init EQ for same-origin/blob sources.
   useEffect(() => {
     if (!audioRef.current) return
     const audio = audioRef.current
     const initEQ = () => {
       if (!equalizerRef.current && audio) {
-        // Skip EQ for cross-origin streams (will cause silent output)
-        // /api/stream URLs redirect to Google Drive → cross-origin, so skip EQ
+        // Blob URLs are same-origin, so EQ should work
         const src = audio.src || ''
         const isSameOrigin = src.startsWith('blob:') || src.startsWith('data:')
-        const isStreamProxy = src.includes('/api/stream')
-        if (!isSameOrigin || isStreamProxy) {
-          console.log('[DesktopPlayer] Skipping EQ for cross-origin/stream-proxy (would cause silence)')
-          // Ensure volume is controlled directly on the audio element
+        if (!isSameOrigin) {
+          console.log('[DesktopPlayer] Skipping EQ for non-blob source')
           const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
           audio.volume = effectiveVolume
           return
@@ -476,6 +541,12 @@ export default function DesktopPlayer() {
       seekTimeRef.current = audioRef.current.currentTime
     }
   }
+  const handleProgress = () => {
+    if (audioRef.current && audioRef.current.buffered.length > 0 && audioRef.current.duration > 0) {
+      const bufferedEnd = audioRef.current.buffered.end(audioRef.current.buffered.length - 1)
+      setBufferProgress(bufferedEnd / audioRef.current.duration)
+    }
+  }
   const handleLoadedMetadata = () => { 
     if (audioRef.current && isFinite(audioRef.current.duration)) {
       setDuration(audioRef.current.duration)
@@ -638,15 +709,17 @@ export default function DesktopPlayer() {
             onLoadedMetadata={handleLoadedMetadata} 
             onEnded={handleNextWrapped}
             onError={handleAudioError}
+            onProgress={handleProgress}
           />
 
       {/* ==================== 하단 바 (항상 표시) ==================== */}
       <div 
         className="h-[80px] flex items-center justify-between px-4 relative z-50 shrink-0 analog-surface border-t border-[var(--border-light)]"
       >
-        {/* 상단 프로그레스 */}
+        {/* 상단 프로그레스 (버퍼 + 재생) */}
         <div className="absolute top-0 left-0 right-0 h-[3px] bg-[var(--bg-container-highest)]">
-          <div className="h-full bg-[var(--tertiary)] transition-all duration-200" style={{ width: `${progressPercent}%` }} />
+          <div className="absolute inset-0 h-full bg-[var(--tertiary)] transition-all duration-500" style={{ width: `${(loadProgress !== null ? loadProgress : bufferProgress) * 100}%`, opacity: 0.25 }} />
+          <div className="absolute inset-0 h-full bg-[var(--tertiary)] transition-all duration-200" style={{ width: `${progressPercent}%` }} />
           <input type="range" min={0} max={validDuration || 100} step="any" value={currentTime}
             onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
             className="absolute top-0 left-0 w-full h-3 -translate-y-1 opacity-0 cursor-pointer z-20" />
@@ -702,6 +775,9 @@ export default function DesktopPlayer() {
           <div className="w-full flex items-center gap-3 text-[10px] text-[var(--text-muted)] font-['Work_Sans'] font-medium">
             <span className="w-10 text-right">{formatTime(currentTime)}</span>
             <div className="flex-1 h-1 bg-[var(--bg-container-highest)] rounded-full relative cursor-pointer overflow-hidden group/seek shadow-[var(--shadow-pressed)]">
+              {/* 버퍼 진행 */}
+              <div className="absolute inset-y-0 left-0 bg-[var(--tertiary)] rounded-full transition-all duration-500" style={{ width: `${(loadProgress !== null ? loadProgress : bufferProgress) * 100}%`, opacity: 0.2 }} />
+              {/* 재생 진행 */}
               <div className="absolute inset-y-0 left-0 bg-[var(--tertiary)] rounded-full" style={{ width: `${progressPercent}%` }} />
               <input type="range" min={0} max={validDuration || 100} step="any" value={currentTime}
                 onChange={handleSeekChange} onMouseUp={handleSeekEnd}
@@ -799,7 +875,23 @@ export default function DesktopPlayer() {
                     }}
                     className="p-2 border border-[var(--border-strong)] rounded-full text-[var(--text-muted)] hover:border-[var(--tertiary)] hover:text-[var(--tertiary)] hover:bg-[var(--tertiary)]/5 transition-all shadow-sm bg-[var(--bg-surface)]"
                   >
-                    <Icon.Bookmark size={16} />
+                    <Icon.Bookmark size={18} />
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      if (!showPlaylistPopup) {
+                        try {
+                          const { getPlaylists } = await import('@/app/actions/playlist')
+                          const pls = await getPlaylists()
+                          setDpPlaylists(pls)
+                        } catch(err) { setDpPlaylists([]) }
+                      }
+                      setShowPlaylistPopup(!showPlaylistPopup)
+                      setPlaylistAdded(false)
+                    }}
+                    className={`p-2 border border-[var(--border-strong)] rounded-full transition-all shadow-sm bg-[var(--bg-surface)] ${showPlaylistPopup ? 'text-[var(--tertiary)] border-[var(--tertiary)]' : 'text-[var(--text-muted)] hover:border-[var(--tertiary)] hover:text-[var(--tertiary)] hover:bg-[var(--tertiary)]/5'}`}
+                  >
+                    <Icon.Plus size={16} />
                   </button>
                   <button onClick={toggleSleepTimer} className={`p-2 border rounded-full transition-all shadow-sm bg-[var(--bg-surface)] ${sleepTimer > 0 ? 'text-[var(--tertiary)] border-[var(--tertiary)] bg-[var(--tertiary)]/10' : 'border-[var(--border-strong)] text-[var(--text-muted)] hover:border-[var(--tertiary)] hover:text-[var(--tertiary)] hover:bg-[var(--tertiary)]/5'}`}>
                     <Icon.Moon size={16} />

@@ -8,6 +8,16 @@ import {
   ChevronRight, ArrowLeft, Disc3, Trash2
 } from 'lucide-react'
 
+function guessMimeType(name: string): string {
+  const ext = name?.toLowerCase().split('.').pop() || ''
+  const map: Record<string, string> = {
+    mp3: 'audio/mpeg', flac: 'audio/flac', wav: 'audio/wav',
+    ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac',
+    opus: 'audio/opus', wma: 'audio/x-ms-wma'
+  }
+  return map[ext] || 'audio/mpeg'
+}
+
 export default function DesktopFiles() {
   const [view, setView] = useState<'menu' | 'downloads' | 'favorites' | 'recents' | 'offlineFolders'>('menu')
   const [files, setFiles] = useState<any[]>([])
@@ -24,16 +34,21 @@ export default function DesktopFiles() {
   }
 
   const handlePlay = (file: any) => {
-    const objectUrl = file.blob ? URL.createObjectURL(file.blob) : null
+    const mime = file.mimeType || guessMimeType(file.name)
+    const objectUrl = file.blob ? URL.createObjectURL(new Blob([file.blob], { type: mime })) : null
     const track = {
-      id: file.id, name: file.name, artist: file.artist,
-      thumbnailLink: file.thumbnailLink, cover_art: file.cover_art,
-      lyrics: file.lyrics, src: objectUrl, mimeType: file.mimeType
+      id: file.id, name: file.name, title: file.name?.replace(/\.[^.]+$/, ''),
+      artist: file.artist, thumbnailLink: file.thumbnailLink, cover_art: file.cover_art,
+      lyrics: file.lyrics, src: objectUrl, mimeType: mime
     }
-    const playlist = files.filter(f => f.blob).map(f => ({
-      id: f.id, name: f.name, artist: f.artist,
-      thumbnailLink: f.thumbnailLink, src: URL.createObjectURL(f.blob), mimeType: f.mimeType
-    }))
+    const playlist = files.filter(f => f.blob).map(f => {
+      const m = f.mimeType || guessMimeType(f.name)
+      return {
+        id: f.id, name: f.name, title: f.name?.replace(/\.[^.]+$/, ''),
+        artist: f.artist, thumbnailLink: f.thumbnailLink,
+        src: URL.createObjectURL(new Blob([f.blob], { type: m })), mimeType: m
+      }
+    })
     setPlaylist(playlist); setTrack(track)
   }
 

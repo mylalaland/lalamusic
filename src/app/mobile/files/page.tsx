@@ -14,6 +14,16 @@ const Icon = {
   Shuffle: Shuffle as any
 }
 
+function guessMimeType(name: string): string {
+  const ext = name?.toLowerCase().split('.').pop() || ''
+  const map: Record<string, string> = {
+    mp3: 'audio/mpeg', flac: 'audio/flac', wav: 'audio/wav',
+    ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac',
+    opus: 'audio/opus', wma: 'audio/x-ms-wma'
+  }
+  return map[ext] || 'audio/mpeg'
+}
+
 export default function FilesPage() {
   const [files, setFiles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -38,31 +48,39 @@ export default function FilesPage() {
   }
 
   const handlePlay = (file: any) => {
-    // Blob을 URL로 변환하여 재생
-    const objectUrl = URL.createObjectURL(file.blob)
+    // Blob을 URL로 변환하여 재생 — FLAC 등을 위해 MIME type 명시
+    const mimeType = file.mimeType || guessMimeType(file.name)
+    const typedBlob = new Blob([file.blob], { type: mimeType })
+    const objectUrl = URL.createObjectURL(typedBlob)
     
     const track = {
         id: file.id,
         name: file.name,
+        title: file.name?.replace(/\.[^.]+$/, ''),
         artist: file.artist,
         thumbnailLink: file.thumbnailLink,
         cover_art: file.cover_art,
         lyrics: file.lyrics,
         src: objectUrl,
-        mimeType: file.mimeType
+        mimeType: mimeType
     }
 
     // 플레이리스트 구성 (현재 목록 전체)
-    const playlist = files.map(f => ({
-        id: f.id,
-        name: f.name,
-        artist: f.artist,
-        thumbnailLink: f.thumbnailLink,
-        cover_art: f.cover_art,
-        lyrics: f.lyrics,
-        src: URL.createObjectURL(f.blob),
-        mimeType: f.mimeType
-    }))
+    const playlist = files.map(f => {
+        const mime = f.mimeType || guessMimeType(f.name)
+        const blob = new Blob([f.blob], { type: mime })
+        return {
+            id: f.id,
+            name: f.name,
+            title: f.name?.replace(/\.[^.]+$/, ''),
+            artist: f.artist,
+            thumbnailLink: f.thumbnailLink,
+            cover_art: f.cover_art,
+            lyrics: f.lyrics,
+            src: URL.createObjectURL(blob),
+            mimeType: mime
+        }
+    })
 
     setPlaylist(playlist)
     setTrack(track)
@@ -70,22 +88,30 @@ export default function FilesPage() {
 
   const handlePlayAll = () => {
     if (files.length === 0) return
-    const playlist = files.map(f => ({
-        id: f.id, name: f.name, artist: f.artist,
-        thumbnailLink: f.thumbnailLink, cover_art: f.cover_art, lyrics: f.lyrics,
-        src: URL.createObjectURL(f.blob), mimeType: f.mimeType
-    }))
+    const playlist = files.map(f => {
+        const mime = f.mimeType || guessMimeType(f.name)
+        const blob = new Blob([f.blob], { type: mime })
+        return {
+            id: f.id, name: f.name, title: f.name?.replace(/\.[^.]+$/, ''),
+            artist: f.artist, thumbnailLink: f.thumbnailLink, cover_art: f.cover_art,
+            lyrics: f.lyrics, src: URL.createObjectURL(blob), mimeType: mime
+        }
+    })
     setPlaylist(playlist)
     setTrack(playlist[0])
   }
 
   const handleShufflePlay = () => {
     if (files.length === 0) return
-    const playlist = files.map(f => ({
-        id: f.id, name: f.name, artist: f.artist,
-        thumbnailLink: f.thumbnailLink, cover_art: f.cover_art, lyrics: f.lyrics,
-        src: URL.createObjectURL(f.blob), mimeType: f.mimeType
-    }))
+    const playlist = files.map(f => {
+        const mime = f.mimeType || guessMimeType(f.name)
+        const blob = new Blob([f.blob], { type: mime })
+        return {
+            id: f.id, name: f.name, title: f.name?.replace(/\.[^.]+$/, ''),
+            artist: f.artist, thumbnailLink: f.thumbnailLink, cover_art: f.cover_art,
+            lyrics: f.lyrics, src: URL.createObjectURL(blob), mimeType: mime
+        }
+    })
     const shuffled = [...playlist].sort(() => Math.random() - 0.5)
     setPlaylist(shuffled)
     setTrack(shuffled[0])

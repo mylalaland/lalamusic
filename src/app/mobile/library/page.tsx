@@ -454,13 +454,20 @@ export default function LibraryPage() {
         {currentView === 'playlists' && selectedPlaylist && (
             <div>
                 <div className="flex items-center gap-2 p-2 mb-4"><button onClick={() => setState({ selectedPlaylist: null })} className="p-2 bg-[var(--bg-container-high)] rounded-full"><Icon.ArrowLeft/></button><h2 className="text-xl font-bold">{selectedPlaylist.name}</h2></div>
-                {playlistTracks.map(track => (
-                    <div key={track.id} onClick={() => { setPlaylist(playlistTracks); setTrack(track); }} className="flex items-center gap-3 p-3 hover:bg-[var(--bg-container-highest)] rounded-xl cursor-pointer group">
+                {playlistTracks.map(track => {
+                    const SwipeToDelete = require('@/components/shared/SwipeToDelete').default;
+                    return (
+                    <SwipeToDelete key={track.id} onDelete={async () => {
+                        const res = await removeTrackFromPlaylist(selectedPlaylist.id, track.id);
+                        if (res.success) setState({ playlistTracks: playlistTracks.filter(t => t.id !== track.id) });
+                    }}>
+                    <div onClick={() => { setPlaylist(playlistTracks); setTrack(track); }} className="flex items-center gap-3 p-3 hover:bg-[var(--bg-container-highest)] rounded-xl cursor-pointer group">
                          <div className="w-10 h-10 bg-[var(--bg-container-high)] rounded flex items-center justify-center">{track.cover_art ? <img src={track.cover_art} className="w-full h-full object-cover"/> : <Icon.Music size={18} className="text-[color:var(--text-muted)]/80"/>}</div>
                         <div className="flex-1 min-w-0"><p className="truncate font-medium">{track.name}</p></div>
-                        <button onClick={(e) => handleRemoveTrackFromPlaylist(e, track.id)} className="p-2 text-[color:var(--text-muted)]/60 hover:text-red-500 hover:bg-[var(--bg-container-highest)] rounded-full"><Icon.X size={18} /></button>
                     </div>
-                ))}
+                    </SwipeToDelete>
+                    )
+                })}
             </div>
         )}
 
@@ -474,8 +481,14 @@ export default function LibraryPage() {
                     <div>
                     {bookmarks.map(b => {
                         const track = { ...b.track, initialPosition: b.position };
+                        const SwipeToDelete = require('@/components/shared/SwipeToDelete').default;
                         return (
-                        <div key={b.bookmark_id} onClick={() => { setPlaylist(bookmarks.map(x=>({...x.track, initialPosition: x.position}))); setTrack(track); }} className="flex items-center gap-3 p-3 hover:bg-[var(--bg-container-highest)] rounded-xl cursor-pointer group">
+                        <SwipeToDelete key={b.bookmark_id} onDelete={async () => {
+                            const { removeBookmark } = await import('@/app/actions/bookmarks');
+                            const res = await removeBookmark(b.bookmark_id);
+                            if (res.success) setState({ bookmarks: bookmarks.filter(x => x.bookmark_id !== b.bookmark_id) });
+                        }}>
+                        <div onClick={() => { setPlaylist(bookmarks.map(x=>({...x.track, initialPosition: x.position}))); setTrack(track); }} className="flex items-center gap-3 p-3 hover:bg-[var(--bg-container-highest)] rounded-xl cursor-pointer group">
                             <div className="w-12 h-12 bg-[var(--bg-container-high)] rounded-lg flex items-center justify-center relative overflow-hidden">
                                {track.cover_art || track.thumbnail_link ? <img src={track.cover_art || track.thumbnail_link} className="w-full h-full object-cover"/> : <Icon.Music size={20} className="text-[color:var(--text-muted)]/80"/>}
                             </div>
@@ -487,6 +500,7 @@ export default function LibraryPage() {
                                  <p className="text-sm text-[var(--text-muted)] truncate">{b.bookmark_title || track.artist || 'Unknown'}</p>
                             </div>
                         </div>
+                        </SwipeToDelete>
                     )})}
                     </div>
                 )}

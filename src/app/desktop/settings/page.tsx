@@ -25,8 +25,8 @@ export default function DesktopSettings() {
 
   const { 
     aiProvider, aiApiKeys, aiModels, setAiProvider, setAiApiKey, setAiModel,
-    autoPlayNext, highQualityAudio, themeColor, showLyrics,
-    setAutoPlayNext, setHighQualityAudio, setThemeColor, setShowLyrics
+    autoPlayNext, highQualityAudio, themeColor, showLyrics, offlineMode,
+    setAutoPlayNext, setHighQualityAudio, setThemeColor, setShowLyrics, setOfflineMode
   } = useSettingsStore()
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [fetchedModels, setFetchedModels] = useState<{id: string, label: string}[]>([])
@@ -250,6 +250,14 @@ export default function DesktopSettings() {
                         <div className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)]">Prefer highest quality stream available (may consume more data)</div>
                       </div>
                       <input type="checkbox" checked={highQualityAudio} onChange={(e) => setHighQualityAudio(e.target.checked)}
+                        className="w-4 h-4 accent-[var(--tertiary)] bg-[var(--bg-container)] border border-[var(--border-strong)]" />
+                    </label>
+                    <label className="flex items-center justify-between cursor-pointer group">
+                      <div>
+                        <div className="font-['Work_Sans'] text-sm text-[var(--text-main)] group-hover:text-[var(--tertiary)] transition">Offline Mode</div>
+                        <div className="font-['Noto_Serif'] text-[10px] text-[var(--text-muted)]">다운로드된 곡만 재생 (데이터 절약)</div>
+                      </div>
+                      <input type="checkbox" checked={offlineMode} onChange={(e) => setOfflineMode(e.target.checked)}
                         className="w-4 h-4 accent-[var(--tertiary)] bg-[var(--bg-container)] border border-[var(--border-strong)]" />
                     </label>
                   </div>
