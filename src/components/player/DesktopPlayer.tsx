@@ -199,18 +199,28 @@ export default function DesktopPlayer() {
     const thisTrackId = track.id
     metaTrackIdRef.current = thisTrackId
 
-    // 메타데이터 로드
+    // [OPT] 1단계: Google Drive 썸네일 즉시 표시
+    const thumbUrl = track.thumbnailLink || (track as any).thumbnail_link
+    if (thumbUrl && typeof thumbUrl === 'string' && !thumbUrl.includes('[object Object]')) {
+      const proxied = thumbUrl.includes('googleusercontent.com') 
+        ? `/api/thumbnail?url=${encodeURIComponent(thumbUrl)}`
+        : thumbUrl
+      setLocalCoverArt(proxied)
+    } else {
+      setLocalCoverArt(null)
+    }
+
+    // [OPT] 2단계: IndexedDB 캐시 → 고해상도 교체
     const fetchMeta = async () => {
       const { getOfflineMetadata, saveOfflineMetadata } = await import('@/lib/db/offline')
       const offlineMeta = await getOfflineMetadata(track.id).catch(() => null)
       if (offlineMeta) {
         if (metaTrackIdRef.current !== thisTrackId) return
         if (offlineMeta.cover_art) setLocalCoverArt(offlineMeta.cover_art)
-        else setLocalCoverArt(null)
         return
       }
+      // [OPT] 3단계: 서버 메타데이터 추출
       if (metaTrackIdRef.current !== thisTrackId) return
-      setLocalCoverArt(null)
       setMetaLoading(true)
       try {
         const result = await analyzeMusicMetadata(track.id)

@@ -282,27 +282,39 @@ export default function GlobalPlayer() {
     const thisTrackId = track.id
     metaTrackIdRef.current = thisTrackId
 
+    // [OPT] 1단계: Google Drive 썸네일 즉시 표시 (프록시 경유)
+    const thumbUrl = track.thumbnailLink || (track as any).thumbnail_link
+    if (thumbUrl && typeof thumbUrl === 'string' && !thumbUrl.includes('[object Object]')) {
+      // CORS 우회를 위해 프록시 사용
+      const proxied = thumbUrl.includes('googleusercontent.com') 
+        ? `/api/thumbnail?url=${encodeURIComponent(thumbUrl)}`
+        : thumbUrl
+      setLocalCoverArt(proxied)
+    } else {
+      setLocalCoverArt(null)
+    }
+
+    // [OPT] 2단계: IndexedDB 캐시 확인 → 고해상도 교체
     const fetchMetadata = async () => {
       const { getOfflineMetadata, saveOfflineMetadata } = await import('@/lib/db/offline')
       const offlineMeta = await getOfflineMetadata(track.id).catch(() => null)
       if (offlineMeta) {
-        if (metaTrackIdRef.current !== thisTrackId) return // stale
+        if (metaTrackIdRef.current !== thisTrackId) return
         if (offlineMeta.cover_art) setLocalCoverArt(offlineMeta.cover_art)
-        else setLocalCoverArt(null)
         return
       }
       
-      if (metaTrackIdRef.current !== thisTrackId) return // stale
-      setLocalCoverArt(null)
+      // [OPT] 3단계: 서버에서 메타데이터 추출 (파일 전체 다운 필요 → 느림)
+      if (metaTrackIdRef.current !== thisTrackId) return
       setMetaLoading(true)
       try {
         const result = await analyzeMusicMetadata(track.id)
-        if (metaTrackIdRef.current !== thisTrackId) return // stale — 곡이 이미 바뀜
+        if (metaTrackIdRef.current !== thisTrackId) return
         if (result.success && result.data) {
           updateTrackMetadata(track.id, result.data)
           if (result.heavyMetadata) {
             await saveOfflineMetadata(track.id, result.heavyMetadata)
-            if (metaTrackIdRef.current !== thisTrackId) return // stale
+            if (metaTrackIdRef.current !== thisTrackId) return
             if (result.heavyMetadata.cover_art) setLocalCoverArt(result.heavyMetadata.cover_art)
           }
         }
