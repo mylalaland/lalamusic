@@ -31,6 +31,7 @@ export async function preloadTrack(
   options?: {
     onProgress?: (percent: number) => void
     signal?: AbortSignal
+    fileName?: string
   }
 ): Promise<string> {
   // 1. 캐시 확인
@@ -58,6 +59,7 @@ async function fetchAndCache(
   options?: {
     onProgress?: (percent: number) => void
     signal?: AbortSignal
+    fileName?: string
   }
 ): Promise<string> {
   // 1. 서버에서 토큰 + URL 받기 (Vercel 트래픽: ~200 bytes)
@@ -84,9 +86,9 @@ async function fetchAndCache(
   // 3. 진행률 추적하며 다운로드
   const contentLength = parseInt(audioRes.headers.get('Content-Length') || '0')
   
-  // Google Drive가 octet-stream을 반환하는 경우 대비 MIME 보정
-  const rawType = audioRes.headers.get('Content-Type') || 'audio/mpeg'
-  const resolvedType = resolveMimeType(rawType)
+  // Google Drive가 octet-stream을 반환하는 경우 대비 MIME 보정 (파일명 기반)
+  const rawType = audioRes.headers.get('Content-Type') || ''
+  const resolvedType = resolveMimeType(rawType, options?.fileName)
 
   if (contentLength && options?.onProgress && audioRes.body) {
     // ReadableStream으로 진행률 추적
@@ -120,10 +122,26 @@ async function fetchAndCache(
   }
 }
 
-/** Google Drive가 octet-stream을 반환하는 경우 audio MIME으로 보정 */
-function resolveMimeType(raw: string): string {
-  if (!raw || raw.includes('octet-stream')) return 'audio/mpeg'
-  return raw
+/** Google Drive가 octet-stream을 반환하는 경우 파일명으로 정확한 MIME 추정 */
+function resolveMimeType(raw: string, fileName?: string): string {
+  // Content-Type이 정확하면 그대로 사용
+  if (raw && !raw.includes('octet-stream') && raw.startsWith('audio/')) return raw
+  
+  // 파일명에서 확장자 기반 MIME 추정
+  if (fileName) {
+    const lower = fileName.toLowerCase()
+    if (lower.endsWith('.flac')) return 'audio/flac'
+    if (lower.endsWith('.mp3')) return 'audio/mpeg'
+    if (lower.endsWith('.wav')) return 'audio/wav'
+    if (lower.endsWith('.m4a') || lower.endsWith('.aac')) return 'audio/mp4'
+    if (lower.endsWith('.ogg')) return 'audio/ogg'
+    if (lower.endsWith('.opus')) return 'audio/opus'
+    if (lower.endsWith('.aiff') || lower.endsWith('.aif')) return 'audio/aiff'
+    if (lower.endsWith('.wma')) return 'audio/x-ms-wma'
+    if (lower.endsWith('.webm')) return 'audio/webm'
+  }
+  
+  return 'audio/mpeg' // 최종 폴백
 }
 
 /**

@@ -227,8 +227,12 @@ export function needsWebAudioFallback(mimeType?: string, fileName?: string): boo
   const lower = (fileName || '').toLowerCase()
   const mime = (mimeType || '').toLowerCase()
   
-  // FLAC: <audio> doesn't stream on iOS, but decodeAudioData works
-  if (lower.endsWith('.flac') || mime.includes('flac')) return true
+  // FLAC: iOS Safari supports FLAC via <audio> since iOS 11.
+  // We pre-download entire files as blob URLs, so streaming is not an issue.
+  // Using <audio> tag is preferred because Web Audio API uses iOS "ambient"
+  // audio session which respects the silent switch = no sound.
+  // <audio> tag uses "playback" session = always produces sound.
+  
   // OGG/Vorbis: not supported on Safari at all via <audio>
   if (lower.endsWith('.ogg') || mime.includes('ogg')) return true
   // OPUS: not supported on Safari <audio>

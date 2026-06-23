@@ -398,6 +398,7 @@ export default function GlobalPlayer() {
         try {
           setLoadProgress(0)
           newSrc = await preloadTrack(track.id, track.id, {
+            fileName: track.name || track.title || '',
             onProgress: (pct) => {
               if (metaTrackIdRef.current === thisTrackId) setLoadProgress(pct)
             }
