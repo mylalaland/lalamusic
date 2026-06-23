@@ -122,12 +122,9 @@ async function fetchAndCache(
   }
 }
 
-/** Google Drive가 octet-stream을 반환하는 경우 파일명으로 정확한 MIME 추정 */
+/** 파일명 확장자 → 정확한 MIME 추정 (Content-Type보다 파일명을 우선) */
 function resolveMimeType(raw: string, fileName?: string): string {
-  // Content-Type이 정확하면 그대로 사용
-  if (raw && !raw.includes('octet-stream') && raw.startsWith('audio/')) return raw
-  
-  // 파일명에서 확장자 기반 MIME 추정
+  // 파일명이 가장 신뢰할 수 있는 소스 (Google Drive가 잘못된 Content-Type을 반환할 수 있음)
   if (fileName) {
     const lower = fileName.toLowerCase()
     if (lower.endsWith('.flac')) return 'audio/flac'
@@ -140,6 +137,9 @@ function resolveMimeType(raw: string, fileName?: string): string {
     if (lower.endsWith('.wma')) return 'audio/x-ms-wma'
     if (lower.endsWith('.webm')) return 'audio/webm'
   }
+  
+  // 파일명 없으면 Content-Type 사용
+  if (raw && !raw.includes('octet-stream') && raw.startsWith('audio/')) return raw
   
   return 'audio/mpeg' // 최종 폴백
 }

@@ -511,7 +511,7 @@ export default function GlobalPlayer() {
     }
   }, [isPlaying, isFallbackMode])
 
-  // 볼륨 및 EQ
+  // 볼륨 동기화 (모바일: EQ 미사용 — createMediaElementSource가 iOS에서 무음 유발)
   useEffect(() => {
     const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
 
@@ -522,16 +522,8 @@ export default function GlobalPlayer() {
     }
 
     if (!audioRef.current) return
-    if (!equalizerRef.current) {
-      try { equalizerRef.current = new Equalizer(audioRef.current) } catch(e) { }
-    }
-
-    if (equalizerRef.current) {
-      equalizerRef.current.setVolume(effectiveVolume)
-      audioRef.current.volume = 1
-    } else {
-      audioRef.current.volume = effectiveVolume
-    }
+    // 모바일에서는 Equalizer 사용 안 함 — <audio> 태그 직접 볼륨 제어
+    audioRef.current.volume = effectiveVolume
     audioRef.current.playbackRate = playbackRate
   }, [volume, isMuted, playbackRate])
 
