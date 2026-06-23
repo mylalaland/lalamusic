@@ -617,10 +617,16 @@ export default function GlobalPlayer() {
     seekTimeRef.current = time
   }
   const handleSeekEnd = () => {
+    addDebug(`seekEnd: time=${seekTimeRef.current.toFixed(1)}, fallback=${isFallbackMode}`)
     if (isFallbackMode && fallbackPlayerRef.current) {
       fallbackPlayerRef.current.seek(seekTimeRef.current)
     } else if (audioRef.current) {
       audioRef.current.currentTime = seekTimeRef.current
+      addDebug(`<audio>.currentTime 설정 완료: ${audioRef.current.currentTime.toFixed(1)}`)
+      // WAV seek 후 재생 보장
+      if (isPlaying && audioRef.current.paused) {
+        audioRef.current.play().catch(() => {})
+      }
     }
     setIsSeeking(false)
   }
