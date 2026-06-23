@@ -4,11 +4,70 @@
  * iOS Safari does NOT support FLAC/OGG/OPUS streaming via <audio> tag.
  * However, AudioContext.decodeAudioData() CAN decode FLAC (iOS 11+).
  * 
- * This class fetches the entire file into memory, decodes it,
- * and plays it through an AudioBufferSourceNode.
+ * Strategy: Decode FLAC → AudioBuffer → Convert to WAV → Play via <audio> tag.
+ * This bypasses both the iOS FLAC blob issue and the Web Audio ambient session issue.
  */
 
 import { getFallbackAudioContext } from './sharedAudioCtx'
+
+/**
+ * AudioBuffer → WAV Blob 변환.
+ * iOS Safari에서 FLAC blob은 <audio>로 재생 불가하지만 WAV는 가능.
+ * Web Audio decodeAudioData로 FLAC을 디코딩한 뒤 WAV로 변환하여 <audio> 태그로 재생.
+ */
+export function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
+  const numCh = buffer.numberOfChannels
+  const sampleRate = buffer.sampleRate
+  const bitsPerSample = 16
+  const bytesPerSample = bitsPerSample / 8
+  const blockAlign = numCh * bytesPerSample
+  const dataSize = buffer.length * blockAlign
+  const headerSize = 44
+  const totalSize = headerSize + dataSize
+
+  const wav = new ArrayBuffer(totalSize)
+  const view = new DataView(wav)
+  let pos = 0
+
+  const writeStr = (s: string) => { for (let i = 0; i < s.length; i++) { view.setUint8(pos++, s.charCodeAt(i)) } }
+  const writeU32 = (v: number) => { view.setUint32(pos, v, true); pos += 4 }
+  const writeU16 = (v: number) => { view.setUint16(pos, v, true); pos += 2 }
+
+  // RIFF header
+  writeStr('RIFF')
+  writeU32(totalSize - 8)
+  writeStr('WAVE')
+
+  // fmt chunk
+  writeStr('fmt ')
+  writeU32(16)              // chunk size
+  writeU16(1)               // PCM format
+  writeU16(numCh)
+  writeU32(sampleRate)
+  writeU32(sampleRate * blockAlign)
+  writeU16(blockAlign)
+  writeU16(bitsPerSample)
+
+  // data chunk
+  writeStr('data')
+  writeU32(dataSize)
+
+  // Interleaved PCM samples
+  const channels: Float32Array[] = []
+  for (let ch = 0; ch < numCh; ch++) channels.push(buffer.getChannelData(ch))
+
+  for (let i = 0; i < buffer.length; i++) {
+    for (let ch = 0; ch < numCh; ch++) {
+      let sample = channels[ch][i]
+      sample = Math.max(-1, Math.min(1, sample))
+      const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF
+      view.setInt16(pos, intSample | 0, true)
+      pos += 2
+    }
+  }
+
+  return new Blob([wav], { type: 'audio/wav' })
+}
 
 export type FallbackState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'error'
 

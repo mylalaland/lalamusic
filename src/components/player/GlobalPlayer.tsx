@@ -6,7 +6,7 @@ import { analyzeMusicMetadata } from '@/app/actions/metadata'
 import { getExternalLyrics } from '@/app/actions/lyrics'
 import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
-import { WebAudioFallbackPlayer, needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
+import { WebAudioFallbackPlayer, needsWebAudioFallback, audioBufferToWavBlob } from '@/lib/audio/webAudioFallback'
 import { unlockAllAudioContexts } from '@/lib/audio/sharedAudioCtx'
 import { preloadTrack, getCachedUrl, releaseAllExcept, isCached } from '@/lib/audio/audioPreloader'
 import { 
@@ -107,84 +107,61 @@ export default function GlobalPlayer() {
   // 1-sample silent WAV (forces iOS audio session to "playback" mode)
   const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
 
-  // WebAudioFallbackPlayer로 FLAC/OGG/OPUS 재생 (iOS Safari 전용)
+  // FLAC/OGG/OPUS 재생 (iOS Safari): FLAC 디코딩 → WAV 변환 → <audio> 태그로 재생
+  // Web Audio API 출력은 iOS "ambient" 세션이라 소리가 안 남.
+  // <audio> 태그로 WAV를 재생하면 "media" 세션이라 소리가 남.
   const startFallbackPlayback = async (url: string) => {
-    addDebug('▶ startFallbackPlayback 시작')
+    addDebug('▶ startFallbackPlayback 시작 (WAV 변환 방식)')
     cleanupFallback()
 
-    // [CRITICAL] iOS: <audio> 태그로 무음 재생 (fire-and-forget, await 하면 iOS에서 랫)
-    if (audioRef.current) {
-      audioRef.current.src = SILENT_WAV
-      audioRef.current.loop = true
-      audioRef.current.volume = 0.001
-      audioRef.current.play()
-        .then(() => addDebug('✅ 무음WAV play() 성공'))
-        .catch((e: any) => addDebug(`❌ 무음WAV play() 실패: ${e?.message || e}`))
-    }
-    addDebug('무음WAV 시도 후 계속 진행')
-
-    const player = new WebAudioFallbackPlayer(undefined)
-    fallbackPlayerRef.current = player
-    // @ts-ignore
-    addDebug(`AudioContext 상태: ${player.audioContext?.state}`)
-
-    player.onTimeUpdate = (t) => { if (!isSeeking) { setCurrentTime(t); seekTimeRef.current = t } }
-    player.onDurationChange = (d) => { setDuration(d); addDebug(`duration 설정: ${d.toFixed(1)}s`) }
-    player.onEnded = () => handleNextWrapped()
-
-    // iOS: AudioContext resume
+    // Step 1: FLAC blob을 다운로드하고 AudioBuffer로 디코딩
     try {
-      // @ts-ignore
-      if (player.audioContext?.state === 'suspended') {
-        // @ts-ignore
-        await player.audioContext.resume()
-        // @ts-ignore
-        addDebug(`AudioContext resume 후: ${player.audioContext?.state}`)
+      addDebug('fetch + decodeAudioData 시작...')
+      const tempCtx = new AudioContext()
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`fetch failed: ${response.status}`)
+      const arrayBuffer = await response.arrayBuffer()
+      addDebug(`다운로드 완료: ${(arrayBuffer.byteLength / 1024 / 1024).toFixed(1)}MB`)
+      
+      const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer)
+      addDebug(`디코딩 완료: ${audioBuffer.duration.toFixed(1)}s, ${audioBuffer.numberOfChannels}ch, ${audioBuffer.sampleRate}Hz`)
+      
+      // Step 2: AudioBuffer → WAV Blob 변환
+      addDebug('WAV 변환 시작...')
+      const wavBlob = audioBufferToWavBlob(audioBuffer)
+      const wavUrl = URL.createObjectURL(wavBlob)
+      addDebug(`WAV 변환 완료: ${(wavBlob.size / 1024 / 1024).toFixed(1)}MB`)
+      
+      // AudioContext 정리 (더 이상 필요 없음)
+      tempCtx.close().catch(() => {})
+      
+      // Step 3: <audio> 태그로 WAV 재생
+      if (audioRef.current && metaTrackIdRef.current === track?.id) {
+        audioRef.current.srcObject = null
+        audioRef.current.removeAttribute('crossorigin')
+        audioRef.current.src = wavUrl
+        audioRef.current.volume = isMuted ? 0 : volume
+        audioRef.current.playbackRate = playbackRate
+        audioRef.current.load()
+        
+        setDuration(audioBuffer.duration)
+        // isFallbackMode를 false로 유지 — 표준 <audio> 경로로 재생
+        setIsFallbackMode(false)
+        
+        const handleCanPlay = () => {
+          addDebug('✅ WAV canplay! play() 호출')
+          if (isPlayingRef.current && audioRef.current) {
+            audioRef.current.play()
+              .then(() => addDebug('✅ WAV play() 성공!'))
+              .catch((e: any) => addDebug(`❌ WAV play() 실패: ${e?.message}`))
+          }
+          audioRef.current?.removeEventListener('canplay', handleCanPlay)
+        }
+        audioRef.current.addEventListener('canplay', handleCanPlay)
+        addDebug('<audio>.src = WAV blob URL 설정 완료')
       }
     } catch (e: any) {
-      addDebug(`❌ AudioContext resume 실패: ${e?.message}`)
-    }
-
-    addDebug('loadAndDecode 시작...')
-    const ok = await player.loadAndDecode(url)
-    addDebug(`loadAndDecode 결과: ${ok}`)
-
-    if (ok) {
-      player.setVolume(isMuted ? 0 : volume)
-      player.setPlaybackRate(playbackRate)
-
-      // [CRITICAL] iOS: Web Audio → MediaStreamDestination → <audio>.srcObject
-      // Web Audio "ambient" 세션은 무음 스위치를 존중 → 소리 안 남
-      // <audio> "media" 세션은 무음 스위치 무시 → 소리 남
-      try {
-        const msd = player.audioContext.createMediaStreamDestination()
-        player.gainNode.connect(msd)
-        addDebug(`MediaStreamDest 생성 OK, tracks: ${msd.stream.getAudioTracks().length}`)
-        
-        if (audioRef.current) {
-          audioRef.current.srcObject = msd.stream
-          audioRef.current.volume = 1
-          audioRef.current.loop = false
-          // fire-and-forget (await하면 걸릴 수 있음)
-          audioRef.current.play()
-            .then(() => addDebug('✅ <audio>.srcObject play() 성공'))
-            .catch((e: any) => addDebug(`❌ <audio>.srcObject play() 실패: ${e?.message}`))
-        }
-      } catch (e: any) {
-        addDebug(`❌ MediaStreamDest 실패: ${e?.message}`)
-      }
-
-      setIsFallbackMode(true)
-      addDebug(`play() 호출 전 - ctx상태: ${player.audioContext?.state}, buffer: ${player.audioBuffer ? player.audioBuffer.duration.toFixed(1) + 's' : 'null'}`)
-      try {
-        await player.play()
-        addDebug('✅ play() 완료')
-        addDebug(`play() 후 - ctx상태: ${player.audioContext?.state}`)
-      } catch (e: any) {
-        addDebug(`❌ play() 실패: ${e?.message || e}`)
-      }
-    } else {
-      addDebug('❌ loadAndDecode 실패!')
+      addDebug(`❌ 전체 실패: ${e?.message || e}`)
     }
   }
 
