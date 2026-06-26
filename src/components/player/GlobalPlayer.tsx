@@ -50,6 +50,7 @@ export default function GlobalPlayer() {
   const fallbackPlayerRef = useRef<WebAudioFallbackPlayer | null>(null)
   const nextWavCacheRef = useRef<{ trackId: string, wavUrl: string, duration: number } | null>(null)
   const skipNextLoadRef = useRef(false)
+  const keepAliveRef = useRef<HTMLAudioElement>(null)
   
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -82,6 +83,8 @@ export default function GlobalPlayer() {
     if (fallbackPlayerRef.current?.audioContext?.state === 'suspended') {
       fallbackPlayerRef.current.audioContext.resume().catch(() => {})
     }
+    // [FIX] iOS keep-alive: 첫 재생 시 keep-alive 오디오 시작 (user gesture 필요)
+    startKeepAlive()
     togglePlay()
   }
 
@@ -112,6 +115,18 @@ export default function GlobalPlayer() {
 
   // 1-sample silent WAV (forces iOS audio session to "playback" mode)
   const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
+
+  // [NEW] iOS keep-alive: 무음 오디오를 loop로 지속 재생하여 iOS가 media session을 해제하지 않도록 함
+  // iOS는 <audio>가 재생 중이 아니면 즉시 페이지를 suspend하고 Spotify 등 다른 앱에 세션을 넘김
+  const startKeepAlive = () => {
+    if (!keepAliveRef.current) return
+    if (!keepAliveRef.current.paused) return  // 이미 재생 중
+    keepAliveRef.current.src = SILENT_WAV
+    keepAliveRef.current.loop = true
+    keepAliveRef.current.volume = 0.01  // 거의 무음이지만 0이 아님 (iOS 최적화 방지)
+    keepAliveRef.current.play().catch(() => {})
+    console.log('[GlobalPlayer] Keep-alive audio started')
+  }
 
   // FLAC/OGG/OPUS 재생 (iOS Safari): FLAC 디코딩 → WAV 변환 → <audio> 태그로 재생
   // Web Audio API 출력은 iOS "ambient" 세션이라 소리가 안 남.
@@ -210,6 +225,9 @@ export default function GlobalPlayer() {
         silentPlay?.then(() => audioRef.current?.pause()).catch(() => {})
       }
       
+      // [FIX] iOS keep-alive 오디오도 user gesture에서 unlock
+      startKeepAlive()
+      
       unlockAllAudioContexts().catch(() => {})
       
       document.removeEventListener('touchstart', unlockAudio)
@@ -220,6 +238,11 @@ export default function GlobalPlayer() {
     return () => {
       document.removeEventListener('touchstart', unlockAudio)
       document.removeEventListener('click', unlockAudio)
+      // 컴포넌트 unmount 시 keep-alive 정리
+      if (keepAliveRef.current) {
+        keepAliveRef.current.pause()
+        keepAliveRef.current.src = ''
+      }
     }
   }, [])
 
@@ -683,7 +706,10 @@ export default function GlobalPlayer() {
   }
 
   const handleNextWrapped = () => {
+    try {
     if (!track) return
+    // [FIX] iOS: keep-alive가 재생 중인지 확인하고, 아니면 시작
+    startKeepAlive()
     if (repeatMode === 'one') {
       if (isFallbackMode && fallbackPlayerRef.current) {
         fallbackPlayerRef.current.seek(0)
@@ -763,6 +789,10 @@ export default function GlobalPlayer() {
     // 프리컨버전 안 된 경우: 기존 async 플로우 (화면 켜져있을 때)
     console.log('[GlobalPlayer] Normal async flow for:', nextTrack.name || nextTrack.title)
     setTrack(nextTrack)
+    } catch (e) {
+      console.error('[GlobalPlayer] handleNextWrapped error:', e)
+      // 에러 발생해도 keep-alive가 재생 중이므로 iOS 세션 유지됨
+    }
   }
 
   // 다음 트랙의 즉시 재생 가능 URL을 반환 (없으면 null)
@@ -915,6 +945,13 @@ export default function GlobalPlayer() {
   // ============================================================
   return (
     <>
+      {/* [FIX] iOS keep-alive: 무음 오디오 loop로 media session 유지 */}
+      <audio 
+        ref={keepAliveRef} 
+        playsInline 
+        loop 
+        style={{ display: 'none' }}
+      />
       <audio 
         ref={audioRef} preload="auto" playsInline 
         onTimeUpdate={handleTimeUpdate} 
