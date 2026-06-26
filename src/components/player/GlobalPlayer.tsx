@@ -48,6 +48,8 @@ export default function GlobalPlayer() {
   const isPlayingRef = useRef(isPlaying)
   const prevWavUrlRef = useRef<string | null>(null)  // WAV blob URL 메모리 누수 방지
   const fallbackPlayerRef = useRef<WebAudioFallbackPlayer | null>(null)
+  const nextWavCacheRef = useRef<{ trackId: string, wavUrl: string, duration: number } | null>(null)
+  const skipNextLoadRef = useRef(false)
   
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -160,6 +162,34 @@ export default function GlobalPlayer() {
       }
     } catch (e) {
       console.error('[FLAC] Decode/WAV conversion failed:', e)
+    }
+  }
+
+  // [NEW] 다음 FLAC 트랙을 미리 WAV로 변환 (iOS 잠금화면 백그라운드 재생용)
+  // 현재 곡 재생 중 미리 변환해두면, 곡이 끝날 때 async 없이 즉시 src 교체 가능
+  const preconvertToWav = async (trackId: string, blobUrl: string) => {
+    try {
+      // 이전 프리컨버전 정리
+      if (nextWavCacheRef.current && nextWavCacheRef.current.trackId !== trackId) {
+        URL.revokeObjectURL(nextWavCacheRef.current.wavUrl)
+        nextWavCacheRef.current = null
+      }
+      if (nextWavCacheRef.current?.trackId === trackId) return // 이미 변환됨
+
+      console.log('[GlobalPlayer] Pre-converting next FLAC → WAV...')
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+      const tempCtx = new AudioCtx()
+      const response = await fetch(blobUrl)
+      const arrayBuffer = await response.arrayBuffer()
+      const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer)
+      const wavBlob = audioBufferToWavBlob(audioBuffer)
+      const wavUrl = URL.createObjectURL(wavBlob)
+      tempCtx.close().catch(() => {})
+
+      nextWavCacheRef.current = { trackId, wavUrl, duration: audioBuffer.duration }
+      console.log('[GlobalPlayer] Pre-converted WAV ready for next track:', trackId)
+    } catch (e) {
+      console.warn('[GlobalPlayer] WAV pre-conversion failed:', e)
     }
   }
 
@@ -410,95 +440,104 @@ export default function GlobalPlayer() {
 
     checkCacheAndFetch()
 
-    // [FIX] iOS media session 유지: src를 비우지 않고 무음 WAV로 교체
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = SILENT_WAV; }
-    cleanupFallback()
+    // [FIX] iOS background: skipNextLoad가 true면 handleNextWrapped에서 이미 재생 시작됨
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false
+      setLoadProgress(null)
+      console.log('[GlobalPlayer] Skipping audio load — already playing via immediate swap')
+    } else {
+      // [FIX] iOS media session 유지: src를 비우지 않고 무음 WAV로 교체
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = SILENT_WAV; }
+      cleanupFallback()
 
-    // [NEW] 오디오 소스 로딩 — src 설정만, 재생은 isPlaying useEffect가 담당
-    const loadAudioSource = async () => {
-      let newSrc: string
+      // [NEW] 오디오 소스 로딩 — src 설정만, 재생은 isPlaying useEffect가 담당
+      const loadAudioSource = async () => {
+        let newSrc: string
 
-      // blob/http 소스가 이미 있으면 (오프라인 파일 등) 그대로 사용
-      if ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob'))) {
-        newSrc = (track as any).src
-        setLoadProgress(null)
-      } else {
-        // [OFFLINE MODE] 오프라인 모드에서는 스트리밍 차단
-        const { useSettingsStore } = await import('@/lib/store/useSettingsStore')
-        const isOffline = useSettingsStore.getState().offlineMode
-        if (isOffline) {
-          console.log('[GlobalPlayer] Offline mode ON — streaming blocked for:', track.name)
+        // blob/http 소스가 이미 있으면 (오프라인 파일 등) 그대로 사용
+        if ((track as any).src && ((track as any).src.startsWith('http') || (track as any).src.startsWith('blob'))) {
+          newSrc = (track as any).src
           setLoadProgress(null)
-          return
-        }
+        } else {
+          // [OFFLINE MODE] 오프라인 모드에서는 스트리밍 차단
+          const { useSettingsStore } = await import('@/lib/store/useSettingsStore')
+          const isOffline = useSettingsStore.getState().offlineMode
+          if (isOffline) {
+            console.log('[GlobalPlayer] Offline mode ON — streaming blocked for:', track.name)
+            setLoadProgress(null)
+            return
+          }
 
-        // 모든 포맷 preloader 사용 (Vercel 트래픽 0)
-        try {
-          setLoadProgress(0)
-          newSrc = await preloadTrack(track.id, track.id, {
-            fileName: track.name || track.title || '',
-            onProgress: (pct) => {
-              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(pct)
+          // 모든 포맷 preloader 사용 (Vercel 트래픽 0)
+          try {
+            setLoadProgress(0)
+            newSrc = await preloadTrack(track.id, track.id, {
+              fileName: track.name || track.title || '',
+              onProgress: (pct) => {
+                if (metaTrackIdRef.current === thisTrackId) setLoadProgress(pct)
+              }
+            })
+            if (metaTrackIdRef.current === thisTrackId) {
+              setLoadProgress(1.0)
+              setTimeout(() => {
+                if (metaTrackIdRef.current === thisTrackId) setLoadProgress(null)
+              }, 1500)
             }
-          })
-          if (metaTrackIdRef.current === thisTrackId) {
-            setLoadProgress(1.0)
-            setTimeout(() => {
-              if (metaTrackIdRef.current === thisTrackId) setLoadProgress(null)
-            }, 1500)
+          } catch (e) {
+            console.error('[GlobalPlayer] Preloader failed:', e)
+            setLoadProgress(null)
+            return
           }
-        } catch (e) {
-          console.error('[GlobalPlayer] Preloader failed:', e)
-          setLoadProgress(null)
+        }
+
+        // stale check
+        if (metaTrackIdRef.current !== thisTrackId) return
+
+        // 포맷별 재생 경로 분기 — iOS에서 FLAC/OGG/OPUS는 <audio> 태그로 직접 재생 불가
+        // decodeAudioData로 디코딩 → WAV로 변환 → <audio> 태그로 재생
+        const useFallback = needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)
+        if (useFallback) {
+          startFallbackPlayback(newSrc)
           return
         }
-      }
 
-      // stale check
-      if (metaTrackIdRef.current !== thisTrackId) return
+        // Standard <audio> playback path
+        setIsFallbackMode(false)
+        if (audioRef.current) {
+          if (newSrc.startsWith('blob:')) audioRef.current.removeAttribute('crossorigin')
+          else audioRef.current.crossOrigin = "anonymous"
+          audioRef.current.src = newSrc
+          audioRef.current.playbackRate = playbackRate
+          audioRef.current.volume = isMuted ? 0 : volume
+          retryCountRef.current = 0
+          audioRef.current.load()
 
-      // 포맷별 재생 경로 분기 — iOS에서 FLAC/OGG/OPUS는 <audio> 태그로 직접 재생 불가
-      // decodeAudioData로 디코딩 → WAV로 변환 → <audio> 태그로 재생
-      const useFallback = needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)
-      if (useFallback) {
-        startFallbackPlayback(newSrc)
-        return
-      }
-
-      // Standard <audio> playback path
-      setIsFallbackMode(false)
-      if (audioRef.current) {
-        if (newSrc.startsWith('blob:')) audioRef.current.removeAttribute('crossorigin')
-        else audioRef.current.crossOrigin = "anonymous"
-        audioRef.current.src = newSrc
-        audioRef.current.playbackRate = playbackRate
-        audioRef.current.volume = isMuted ? 0 : volume
-        retryCountRef.current = 0
-        audioRef.current.load()
-
-        const handleCanPlay = () => {
-          if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
-          if (isPlayingRef.current) {
-            unlockAllAudioContexts().catch(() => {})
-            audioRef.current!.play().catch((e) => console.warn('Play blocked:', e))
+          const handleCanPlay = () => {
+            if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
+            if (isPlayingRef.current) {
+              unlockAllAudioContexts().catch(() => {})
+              audioRef.current!.play().catch((e) => console.warn('Play blocked:', e))
+            }
+            audioRef.current!.removeEventListener('canplay', handleCanPlay)
           }
-          audioRef.current!.removeEventListener('canplay', handleCanPlay)
+          audioRef.current.addEventListener('canplay', handleCanPlay)
         }
-        audioRef.current.addEventListener('canplay', handleCanPlay)
       }
-    }
 
-    loadAudioSource()
+      loadAudioSource()
+    }
 
     return () => {
       if (metaTimerRef.current) { clearTimeout(metaTimerRef.current); metaTimerRef.current = null }
-      // [FIX] iOS media session 유지: cleanup에서도 src를 비우지 않음
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = SILENT_WAV; }
-      cleanupFallback()
+      // [FIX] iOS: skipNextLoad가 true면 다음 곡이 이미 재생 중이므로 pause 하지 않음
+      if (!skipNextLoadRef.current) {
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = SILENT_WAV; }
+        cleanupFallback()
+      }
     }
   }, [track?.id])
 
-  // [NEW] 다음곡 프리로드 + 이전곡 캐시 유지
+  // [NEW] 다음곡 프리로드 + iOS FLAC WAV 프리컨버전 + 이전곡 캐시 유지
   useEffect(() => {
     if (!track || !playlist.length) return
     const currentIndex = playlist.findIndex(p => p.id === track.id)
@@ -510,13 +549,41 @@ export default function GlobalPlayer() {
       preloadAbortRef.current = null
     }
 
-    // 다음곡 프리로드 (blob/src가 없는 경우에만)
-    const nextTrack = playlist[currentIndex + 1]
-    if (nextTrack && !(nextTrack as any).src && !isCached(nextTrack.id)) {
-      console.log('[GlobalPlayer] Pre-fetching next track:', nextTrack.name || nextTrack.title)
-      const controller = new AbortController()
-      preloadAbortRef.current = () => controller.abort()
-      preloadTrack(nextTrack.id, nextTrack.id, { signal: controller.signal }).catch(() => {})
+    // 다음곡 결정 (repeat all이면 마지막→첫번째)
+    let nextTrack = playlist[currentIndex + 1]
+    if (!nextTrack && repeatMode === 'all' && playlist.length > 1) {
+      nextTrack = playlist[0]
+    }
+
+    if (nextTrack) {
+      const nextNeedsFallback = needsWebAudioFallback(
+        nextTrack.mimeType ?? undefined,
+        (nextTrack.name || nextTrack.title) ?? undefined
+      )
+
+      // 다음곡 프리로드 (blob/src가 없는 경우에만)
+      if (!(nextTrack as any).src && !isCached(nextTrack.id)) {
+        console.log('[GlobalPlayer] Pre-fetching next track:', nextTrack.name || nextTrack.title)
+        const controller = new AbortController()
+        preloadAbortRef.current = () => controller.abort()
+        preloadTrack(nextTrack.id, nextTrack.id, {
+          signal: controller.signal,
+          fileName: nextTrack.name || nextTrack.title || ''
+        })
+          .then((blobUrl) => {
+            // [NEW] iOS: FLAC/OGG/OPUS면 WAV로 미리 변환
+            if (nextNeedsFallback) {
+              preconvertToWav(nextTrack!.id, blobUrl)
+            }
+          })
+          .catch(() => {})
+      } else if (nextNeedsFallback) {
+        // 이미 캐시된 FLAC → WAV 프리컨버전
+        const cachedUrl = getCachedUrl(nextTrack.id)
+        if (cachedUrl && !nextWavCacheRef.current?.trackId) {
+          preconvertToWav(nextTrack.id, cachedUrl)
+        }
+      }
     }
 
     // 캐시 정리: prev + current + next만 유지
@@ -627,16 +694,102 @@ export default function GlobalPlayer() {
       }
       return
     }
+
+    // 다음 트랙 결정
+    let nextTrack: typeof track = null
     if (isShuffle && playlist.length > 0) {
-      setTrack(playlist[Math.floor(Math.random() * playlist.length)])
+      nextTrack = playlist[Math.floor(Math.random() * playlist.length)]
     } else {
       const currentIndex = playlist.findIndex(p => p.id === track.id)
       const isLast = currentIndex === playlist.length - 1
       if (isLast) {
-        if (repeatMode === 'all') setTrack(playlist[0])
-        else { if (isPlaying) togglePlay() }
-      } else { playNext() }
+        if (repeatMode === 'all') nextTrack = playlist[0]
+        else { if (isPlaying) togglePlay(); return }
+      } else {
+        nextTrack = playlist[currentIndex + 1]
+      }
     }
+
+    if (!nextTrack) return
+
+    // [FIX] iOS 잠금화면 백그라운드 재생: 미리 준비된 URL이 있으면 async 없이 즉시 재생
+    // iOS는 화면 잠금 시 JS 실행을 중단하므로, onEnded 후 async 작업이 완료 불가.
+    // 미리 변환해둔 WAV나 캐시된 blob URL로 즉시 src 교체하면 재생이 끊기지 않음.
+    const immediateUrl = getImmediatePlayUrl(nextTrack)
+    if (immediateUrl && audioRef.current) {
+      console.log('[GlobalPlayer] ⚡ Immediate src swap for:', nextTrack.name || nextTrack.title)
+
+      // 이전 WAV blob URL 정리
+      if (prevWavUrlRef.current) {
+        URL.revokeObjectURL(prevWavUrlRef.current)
+      }
+      // 프리컨버전 WAV인 경우 duration 즉시 설정
+      if (nextWavCacheRef.current?.trackId === nextTrack.id) {
+        setDuration(nextWavCacheRef.current.duration)
+        prevWavUrlRef.current = nextWavCacheRef.current.wavUrl
+        nextWavCacheRef.current = null
+      } else {
+        prevWavUrlRef.current = null
+      }
+
+      // 즉시 src 교체 및 재생 (동기 작업만!)
+      audioRef.current.srcObject = null
+      if (immediateUrl.startsWith('blob:')) audioRef.current.removeAttribute('crossorigin')
+      audioRef.current.src = immediateUrl
+      audioRef.current.volume = isMuted ? 0 : volume
+      audioRef.current.playbackRate = playbackRate
+      setCurrentTime(0)
+      setIsFallbackMode(false)
+
+      // play()는 Promise이지만 iOS는 onEnded 컨텍스트에서 허용
+      const playPromise = audioRef.current.play()
+      if (playPromise) {
+        playPromise.catch(() => {
+          // play() 실패 시 canplay 이벤트에서 재시도
+          const h = () => {
+            audioRef.current?.play().catch(() => {})
+            audioRef.current?.removeEventListener('canplay', h)
+          }
+          audioRef.current?.addEventListener('canplay', h)
+        })
+      }
+
+      // React 상태 업데이트 (useEffect는 skip)
+      skipNextLoadRef.current = true
+      setTrack(nextTrack)
+      return
+    }
+
+    // 프리컨버전 안 된 경우: 기존 async 플로우 (화면 켜져있을 때)
+    console.log('[GlobalPlayer] Normal async flow for:', nextTrack.name || nextTrack.title)
+    setTrack(nextTrack)
+  }
+
+  // 다음 트랙의 즉시 재생 가능 URL을 반환 (없으면 null)
+  const getImmediatePlayUrl = (nextTrack: typeof track): string | null => {
+    if (!nextTrack) return null
+
+    // 1순위: 프리컨버전된 WAV (FLAC/OGG/OPUS → WAV)
+    if (nextWavCacheRef.current?.trackId === nextTrack.id) {
+      return nextWavCacheRef.current.wavUrl
+    }
+
+    // 2순위: <audio> 태그로 직접 재생 가능한 캐시된 blob (mp3/m4a/aac 등)
+    const needsFallback = needsWebAudioFallback(
+      nextTrack.mimeType ?? undefined,
+      (nextTrack.name || nextTrack.title) ?? undefined
+    )
+    if (!needsFallback) {
+      const cachedUrl = getCachedUrl(nextTrack.id)
+      if (cachedUrl) return cachedUrl
+      // track에 src가 있으면 사용 (오프라인 파일 등)
+      if ((nextTrack as any).src &&
+          ((nextTrack as any).src.startsWith('http') || (nextTrack as any).src.startsWith('blob'))) {
+        return (nextTrack as any).src
+      }
+    }
+
+    return null
   }
   const handlePrevWrapped = () => {
     if (currentTime > 3) {
