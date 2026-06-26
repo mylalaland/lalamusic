@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { usePlayerStore } from '@/lib/store/usePlayerStore'
+import { usePlayerStore, type MusicFile } from '@/lib/store/usePlayerStore'
 import { analyzeMusicMetadata } from '@/app/actions/metadata'
 import { getExternalLyrics } from '@/app/actions/lyrics'
 import { addBookmark } from '@/app/actions/bookmarks'
