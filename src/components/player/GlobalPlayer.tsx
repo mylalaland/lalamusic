@@ -46,6 +46,7 @@ export default function GlobalPlayer() {
   const metaTrackIdRef = useRef<string | null>(null)
   const metaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isPlayingRef = useRef(isPlaying)
+  const prevWavUrlRef = useRef<string | null>(null)  // WAV blob URL 메모리 누수 방지
   const fallbackPlayerRef = useRef<WebAudioFallbackPlayer | null>(null)
   
   const [currentTime, setCurrentTime] = useState(0)
@@ -91,12 +92,18 @@ export default function GlobalPlayer() {
       fallbackPlayerRef.current.destroy()
       fallbackPlayerRef.current = null
     }
-    // <audio> 정리 (srcObject/src 모두)
+    // <audio> 정리 — iOS media session 유지를 위해 src를 비우지 않고 무음 WAV로 교체
+    // src = '' 로 비우면 iOS가 media session 소유권을 즉시 포기하고 다른 앱에 넘겨버림
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.srcObject = null
       audioRef.current.loop = false
-      audioRef.current.src = ''
+      audioRef.current.src = SILENT_WAV  // [FIX] iOS media session 유지
+    }
+    // 이전 WAV blob URL 해제 (메모리 누수 방지)
+    if (prevWavUrlRef.current) {
+      URL.revokeObjectURL(prevWavUrlRef.current)
+      prevWavUrlRef.current = null
     }
     setIsFallbackMode(false)
   }
@@ -127,6 +134,12 @@ export default function GlobalPlayer() {
       
       // Step 3: <audio> 태그로 WAV 재생
       if (audioRef.current && metaTrackIdRef.current === track?.id) {
+        // 이전 WAV blob URL 해제 (메모리 누수 방지)
+        if (prevWavUrlRef.current) {
+          URL.revokeObjectURL(prevWavUrlRef.current)
+        }
+        prevWavUrlRef.current = wavUrl
+        
         audioRef.current.srcObject = null
         audioRef.current.removeAttribute('crossorigin')
         audioRef.current.src = wavUrl
@@ -397,7 +410,8 @@ export default function GlobalPlayer() {
 
     checkCacheAndFetch()
 
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
+    // [FIX] iOS media session 유지: src를 비우지 않고 무음 WAV로 교체
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = SILENT_WAV; }
     cleanupFallback()
 
     // [NEW] 오디오 소스 로딩 — src 설정만, 재생은 isPlaying useEffect가 담당
@@ -478,7 +492,8 @@ export default function GlobalPlayer() {
 
     return () => {
       if (metaTimerRef.current) { clearTimeout(metaTimerRef.current); metaTimerRef.current = null }
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
+      // [FIX] iOS media session 유지: cleanup에서도 src를 비우지 않음
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = SILENT_WAV; }
       cleanupFallback()
     }
   }, [track?.id])
