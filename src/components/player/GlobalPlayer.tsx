@@ -696,7 +696,7 @@ export default function GlobalPlayer() {
     }
 
     // 다음 트랙 결정
-    let nextTrack: typeof track = null
+    let nextTrack: MusicFile | null = null
     if (isShuffle && playlist.length > 0) {
       nextTrack = playlist[Math.floor(Math.random() * playlist.length)]
     } else {
