@@ -849,13 +849,12 @@ export default function GlobalPlayer() {
 
     // 2순위: blob이 없는 경우
     if (isBackground) {
-      debugMeta('[X] No blob cached — cannot play in BG')
-      // iOS 백그라운드에서는 새 HTTP 요청 불가 (STALL됨)
-      // 프리로드가 안 된 곡은 백그라운드에서 재생 불가
-      console.log('[GlobalPlayer] ❌ iOS bg: No cached blob, skipping')
-      // 그래도 트랙은 변경하여 다음에 포그라운드로 오면 재생되도록
-      skipNextLoadRef.current = false
-      setTrack(nextTrack)
+      debugMeta('[X] No blob — keeping current song')
+      // [FIX] 백그라운드에서 blob이 없으면 트랙을 변경하지 않음!
+      // setTrack() 호출하면 cleanup에서 audioRef.pause() + src=SILENT_WAV 실행되어
+      // 현재 재생 중인 곡까지 죽어버림.
+      // 대신 현재 곡을 계속 재생하고, 포그라운드 복귀 시 사용자가 다시 next 누르도록 함.
+      console.log('[GlobalPlayer] ❌ iOS bg: No cached blob, keeping current track playing')
       return
     }
 
@@ -933,9 +932,7 @@ export default function GlobalPlayer() {
           setTrack(prevTrack)
           return
         }
-        // blob 없으면 트랙만 변경 (포그라운드 복귀시 재생)
-        skipNextLoadRef.current = false
-        setTrack(prevTrack)
+        // blob 없으면 현재 곡 유지 (setTrack하면 현재 곡 죽음)
         return
       }
       playPrev()
