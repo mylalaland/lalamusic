@@ -799,12 +799,27 @@ export default function GlobalPlayer() {
     const isBackground = typeof document !== 'undefined' && document.hidden
 
     if (isIOS && isBackground && audioRef.current) {
-      // 미리 버퍼링된 /api/stream URL 사용 (브라우저 HTTP 캐시 히트 → Vercel 트래픽 0)
-      const streamUrl = nextStreamUrlRef.current?.trackId === nextTrack.id
-        ? nextStreamUrlRef.current.url
+      // ======== DEBUG: 잠금화면에서 보이는 디버그 마커 ========
+      const debugMeta = (step: string) => {
+        if (navigator.mediaSession) {
+          const title = nextTrack?.title || nextTrack?.name?.replace(/\.(mp3|wav|flac|m4a)$/i, '') || 'Unknown'
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title,
+            artist: step,
+            album: 'Lala Music DEBUG',
+          })
+        }
+      }
+      
+      debugMeta('[1] BG-NEXT called')
+      
+      // 미리 버퍼링된 /api/stream URL 사용
+      const hasCachedUrl = nextStreamUrlRef.current?.trackId === nextTrack.id
+      const streamUrl = hasCachedUrl
+        ? nextStreamUrlRef.current!.url
         : `/api/stream?id=${nextTrack.id}&name=${encodeURIComponent(nextTrack.name || '')}&mimeType=${encodeURIComponent(nextTrack.mimeType || '')}`
       
-      console.log('[GlobalPlayer] 🌐 iOS bg: HTTP stream for:', nextTrack.name || nextTrack.title)
+      debugMeta(`[2] cached=${hasCachedUrl ? 'Y' : 'N'}`)
 
       if (prevWavUrlRef.current) {
         URL.revokeObjectURL(prevWavUrlRef.current)
@@ -820,16 +835,35 @@ export default function GlobalPlayer() {
       setCurrentTime(0)
       setDuration(0)
       setIsFallbackMode(false)
+      
+      debugMeta(`[3] src set, readyState=${audioRef.current.readyState}`)
+
+      // 오디오 이벤트 디버그 리스너
+      const dbgCanplay = () => { debugMeta('[5] canplay fired'); audioRef.current?.removeEventListener('canplay', dbgCanplay) }
+      const dbgError = () => { 
+        const err = audioRef.current?.error
+        debugMeta(`[ERR] code=${err?.code} msg=${err?.message?.slice(0, 30)}`)
+        audioRef.current?.removeEventListener('error', dbgError) 
+      }
+      const dbgStalled = () => { debugMeta('[STALL] stalled event'); audioRef.current?.removeEventListener('stalled', dbgStalled) }
+      const dbgWaiting = () => { debugMeta('[WAIT] waiting event'); audioRef.current?.removeEventListener('waiting', dbgWaiting) }
+      audioRef.current.addEventListener('canplay', dbgCanplay)
+      audioRef.current.addEventListener('error', dbgError)
+      audioRef.current.addEventListener('stalled', dbgStalled)
+      audioRef.current.addEventListener('waiting', dbgWaiting)
 
       const playPromise = audioRef.current.play()
       if (playPromise) {
-        playPromise.catch(() => {
-          const h = () => {
-            audioRef.current?.play().catch(() => {})
-            audioRef.current?.removeEventListener('canplay', h)
-          }
-          audioRef.current?.addEventListener('canplay', h)
-        })
+        playPromise
+          .then(() => { debugMeta('[4] play() OK') })
+          .catch((e) => {
+            debugMeta(`[4] play() FAIL: ${e.name}`)
+            const h = () => {
+              audioRef.current?.play().catch(() => {})
+              audioRef.current?.removeEventListener('canplay', h)
+            }
+            audioRef.current?.addEventListener('canplay', h)
+          })
       }
 
       skipNextLoadRef.current = true
