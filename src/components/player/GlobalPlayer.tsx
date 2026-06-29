@@ -52,6 +52,9 @@ export default function GlobalPlayer() {
   const nextWavCacheRef = useRef<{ trackId: string, wavUrl: string, duration: number } | null>(null)
   const skipNextLoadRef = useRef(false)
   const keepAliveRef = useRef<HTMLAudioElement>(null)
+  // [FIX] iOS 잠금화면: Google Drive 직접 스트리밍 URL 미리 저장 (Vercel 트래픽 0)
+  const nextDirectUrlRef = useRef<{ trackId: string, url: string } | null>(null)
+  const prevDirectUrlRef = useRef<{ trackId: string, url: string } | null>(null)
   
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -632,6 +635,36 @@ export default function GlobalPlayer() {
           preconvertToWav(nextTrack.id, cachedUrl)
         }
       }
+
+      // [FIX] iOS 잠금화면: Google Drive 직접 스트리밍 URL 미리 가져오기
+      // /api/stream-url은 URL+토큰만 반환 (~200바이트) — 오디오 트래픽 아님
+      // 이 URL로 iOS 네이티브 미디어 엔진이 Google Drive에서 직접 스트리밍 (Vercel 트래픽 0)
+      if (nextDirectUrlRef.current?.trackId !== nextTrack.id) {
+        fetch(`/api/stream-url?id=${nextTrack.id}`)
+          .then(res => res.json())
+          .then(({ url, token }) => {
+            nextDirectUrlRef.current = {
+              trackId: nextTrack!.id,
+              url: `${url}&access_token=${token}`
+            }
+            console.log('[GlobalPlayer] Pre-fetched direct URL for next track')
+          })
+          .catch(() => {})
+      }
+    }
+
+    // [FIX] iOS: 이전곡 Google Drive URL도 미리 가져오기
+    const prevTrack = currentIndex > 0 ? playlist[currentIndex - 1] : null
+    if (prevTrack && prevDirectUrlRef.current?.trackId !== prevTrack.id) {
+      fetch(`/api/stream-url?id=${prevTrack.id}`)
+        .then(res => res.json())
+        .then(({ url, token }) => {
+          prevDirectUrlRef.current = {
+            trackId: prevTrack!.id,
+            url: `${url}&access_token=${token}`
+          }
+        })
+        .catch(() => {})
     }
 
     // 캐시 정리: prev + current + next만 유지
@@ -770,54 +803,57 @@ export default function GlobalPlayer() {
     // blob URL은 JS 레벨에서 로딩되므로 백그라운드에서 실패.
     // HTTP URL은 iOS 네이티브 미디어 엔진이 처리하므로 JS suspend와 무관.
     //
-    // 해결: 백그라운드에서는 /api/stream HTTP URL을 사용하여
-    //       iOS 네이티브 미디어 엔진이 직접 스트리밍하도록 함.
+    // 해결: 미리 준비된 Google Drive 직접 URL로 스트리밍.
+    //       Google Drive → iPhone 직접 전송 (Vercel 트래픽 0)
+    //       URL+토큰은 곡 재생 중 /api/stream-url로 미리 가져옴 (~200바이트)
     // ============================================================
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
     const isBackground = typeof document !== 'undefined' && document.hidden
 
     if (isIOS && isBackground && audioRef.current) {
-      // iOS 백그라운드: HTTP 스트리밍 URL로 즉시 재생
-      // /api/stream은 같은 도메인이므로 쿠키(인증)가 자동 포함됨
-      // iOS 네이티브 미디어 엔진이 HTTP 스트리밍을 직접 처리
-      const streamUrl = `/api/stream?id=${nextTrack.id}&name=${encodeURIComponent(nextTrack.name || '')}&mimeType=${encodeURIComponent(nextTrack.mimeType || '')}`
-      console.log('[GlobalPlayer] 🌐 iOS background: using HTTP stream for:', nextTrack.name || nextTrack.title)
+      // 미리 준비된 Google Drive 직접 URL 사용 (Vercel 트래픽 0)
+      const directUrl = nextDirectUrlRef.current?.trackId === nextTrack.id
+        ? nextDirectUrlRef.current.url
+        : null
 
-      // 이전 리소스 정리
-      if (prevWavUrlRef.current) {
-        URL.revokeObjectURL(prevWavUrlRef.current)
-        prevWavUrlRef.current = null
+      if (directUrl) {
+        console.log('[GlobalPlayer] 🌐 iOS bg: Direct Google Drive URL for:', nextTrack.name || nextTrack.title)
+
+        if (prevWavUrlRef.current) {
+          URL.revokeObjectURL(prevWavUrlRef.current)
+          prevWavUrlRef.current = null
+        }
+
+        // Google Drive URL은 cross-origin이므로 crossOrigin 설정 안 함
+        // (crossOrigin 설정하면 CORS preflight 발생 → 실패 가능)
+        audioRef.current.srcObject = null
+        audioRef.current.loop = false
+        audioRef.current.removeAttribute('crossorigin')
+        audioRef.current.src = directUrl
+        audioRef.current.volume = isMuted ? 0 : volume
+        audioRef.current.playbackRate = playbackRate
+        setCurrentTime(0)
+        setDuration(0)
+        setIsFallbackMode(false)
+
+        const playPromise = audioRef.current.play()
+        if (playPromise) {
+          playPromise.catch(() => {
+            const h = () => {
+              audioRef.current?.play().catch(() => {})
+              audioRef.current?.removeEventListener('canplay', h)
+            }
+            audioRef.current?.addEventListener('canplay', h)
+          })
+        }
+
+        skipNextLoadRef.current = true
+        setTrack(nextTrack)
+        return
       }
-
-      // 즉시 HTTP URL로 교체 및 재생 (동기 작업만!)
-      audioRef.current.srcObject = null
-      audioRef.current.loop = false
-      audioRef.current.crossOrigin = 'anonymous'
-      audioRef.current.src = streamUrl
-      audioRef.current.volume = isMuted ? 0 : volume
-      audioRef.current.playbackRate = playbackRate
-      setCurrentTime(0)
-      setDuration(0)
-      setIsFallbackMode(false)
-
-      // play()는 iOS의 nexttrack/onEnded 핸들러 컨텍스트에서 허용됨
-      const playPromise = audioRef.current.play()
-      if (playPromise) {
-        playPromise.catch(() => {
-          // play() 실패 시 canplay 이벤트에서 재시도
-          const h = () => {
-            audioRef.current?.play().catch(() => {})
-            audioRef.current?.removeEventListener('canplay', h)
-          }
-          audioRef.current?.addEventListener('canplay', h)
-        })
-      }
-
-      // React 상태 업데이트 (useEffect의 loadAudioSource는 skip)
-      skipNextLoadRef.current = true
-      setTrack(nextTrack)
-      return
+      // directUrl이 없으면 포그라운드 로직으로 폴백
+      console.log('[GlobalPlayer] ⚠️ iOS bg: No pre-fetched URL, falling through to foreground logic')
     }
 
     // ============================================================
@@ -902,45 +938,48 @@ export default function GlobalPlayer() {
       if (isFallbackMode && fallbackPlayerRef.current) fallbackPlayerRef.current.seek(0)
       else if (audioRef.current) audioRef.current.currentTime = 0
     } else {
-      // iOS 백그라운드: HTTP 스트리밍 URL 사용 (blob URL은 iOS 잠금화면에서 로딩 불가)
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
       const isBackground = typeof document !== 'undefined' && document.hidden
 
-      const { playlist, currentTrack } = usePlayerStore.getState()
-      if (!currentTrack) { playPrev(); return }
-      const currentIndex = playlist.findIndex(t => t.id === currentTrack.id)
-      if (currentIndex <= 0) return
-
-      const prevTrack = playlist[currentIndex - 1]
-
       if (isIOS && isBackground && audioRef.current) {
-        const streamUrl = `/api/stream?id=${prevTrack.id}&name=${encodeURIComponent(prevTrack.name || '')}&mimeType=${encodeURIComponent(prevTrack.mimeType || '')}`
-        console.log('[GlobalPlayer] 🌐 iOS background prev: using HTTP stream for:', prevTrack.name || prevTrack.title)
+        // iOS 백그라운드: Google Drive 직접 URL 사용 (Vercel 트래픽 0)
+        const { playlist, currentTrack } = usePlayerStore.getState()
+        if (!currentTrack) { playPrev(); return }
+        const currentIndex = playlist.findIndex(t => t.id === currentTrack.id)
+        if (currentIndex <= 0) return
+        const prevTrack = playlist[currentIndex - 1]
 
-        audioRef.current.srcObject = null
-        audioRef.current.loop = false
-        audioRef.current.crossOrigin = 'anonymous'
-        audioRef.current.src = streamUrl
-        audioRef.current.volume = isMuted ? 0 : volume
-        audioRef.current.playbackRate = playbackRate
-        setCurrentTime(0)
-        setDuration(0)
-        setIsFallbackMode(false)
+        const directUrl = prevDirectUrlRef.current?.trackId === prevTrack.id
+          ? prevDirectUrlRef.current.url
+          : null
 
-        audioRef.current.play().catch(() => {
-          const h = () => {
-            audioRef.current?.play().catch(() => {})
-            audioRef.current?.removeEventListener('canplay', h)
-          }
-          audioRef.current?.addEventListener('canplay', h)
-        })
+        if (directUrl) {
+          console.log('[GlobalPlayer] 🌐 iOS bg prev: Direct Google Drive URL for:', prevTrack.name || prevTrack.title)
+          audioRef.current.srcObject = null
+          audioRef.current.loop = false
+          audioRef.current.removeAttribute('crossorigin')
+          audioRef.current.src = directUrl
+          audioRef.current.volume = isMuted ? 0 : volume
+          audioRef.current.playbackRate = playbackRate
+          setCurrentTime(0)
+          setDuration(0)
+          setIsFallbackMode(false)
 
-        skipNextLoadRef.current = true
-        setTrack(prevTrack)
-      } else {
-        playPrev()
+          audioRef.current.play().catch(() => {
+            const h = () => {
+              audioRef.current?.play().catch(() => {})
+              audioRef.current?.removeEventListener('canplay', h)
+            }
+            audioRef.current?.addEventListener('canplay', h)
+          })
+
+          skipNextLoadRef.current = true
+          setTrack(prevTrack)
+          return
+        }
       }
+      playPrev()
     }
   }
   const toggleSpeed = () => {
