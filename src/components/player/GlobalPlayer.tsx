@@ -52,9 +52,10 @@ export default function GlobalPlayer() {
   const nextWavCacheRef = useRef<{ trackId: string, wavUrl: string, duration: number } | null>(null)
   const skipNextLoadRef = useRef(false)
   const keepAliveRef = useRef<HTMLAudioElement>(null)
-  // [FIX] iOS 잠금화면: Google Drive 직접 스트리밍 URL 미리 저장 (Vercel 트래픽 0)
-  const nextDirectUrlRef = useRef<{ trackId: string, url: string } | null>(null)
-  const prevDirectUrlRef = useRef<{ trackId: string, url: string } | null>(null)
+  // [FIX] iOS 잠금화면: /api/stream URL을 nextAudioRef에 미리 버퍼링
+  // 포그라운드에서 pre-buffer → 브라우저 HTTP 캐시에 저장
+  // 백그라운드에서 같은 URL 사용 → 캐시 히트 (Vercel 트래픽 추가 0)
+  const nextStreamUrlRef = useRef<{ trackId: string, url: string } | null>(null)
   
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -636,35 +637,20 @@ export default function GlobalPlayer() {
         }
       }
 
-      // [FIX] iOS 잠금화면: Google Drive 직접 스트리밍 URL 미리 가져오기
-      // /api/stream-url은 URL+토큰만 반환 (~200바이트) — 오디오 트래픽 아님
-      // 이 URL로 iOS 네이티브 미디어 엔진이 Google Drive에서 직접 스트리밍 (Vercel 트래픽 0)
-      if (nextDirectUrlRef.current?.trackId !== nextTrack.id) {
-        fetch(`/api/stream-url?id=${nextTrack.id}`)
-          .then(res => res.json())
-          .then(({ url, token }) => {
-            nextDirectUrlRef.current = {
-              trackId: nextTrack!.id,
-              url: `${url}&access_token=${token}`
-            }
-            console.log('[GlobalPlayer] Pre-fetched direct URL for next track')
-          })
-          .catch(() => {})
+      // [FIX] iOS 잠금화면: /api/stream URL을 nextAudioRef에 미리 버퍼링
+      // /api/stream은 Cache-Control: public, max-age=3600 설정되어 있으므로
+      // 포그라운드에서 한 번 로드하면 브라우저 HTTP 캐시에 저장됨.
+      // 백그라운드에서 같은 URL을 audioRef에 설정하면 캐시 히트 → Vercel 트래픽 추가 0
+      const streamUrl = `/api/stream?id=${nextTrack.id}&name=${encodeURIComponent(nextTrack.name || '')}&mimeType=${encodeURIComponent(nextTrack.mimeType || '')}`
+      nextStreamUrlRef.current = { trackId: nextTrack.id, url: streamUrl }
+      
+      // nextAudioRef에 미리 로드하여 브라우저 HTTP 캐시에 저장
+      if (nextAudioRef.current) {
+        nextAudioRef.current.preload = 'auto'
+        nextAudioRef.current.src = streamUrl
+        nextAudioRef.current.load()
+        console.log('[GlobalPlayer] 📡 Pre-buffering next track via /api/stream for iOS bg')
       }
-    }
-
-    // [FIX] iOS: 이전곡 Google Drive URL도 미리 가져오기
-    const prevTrack = currentIndex > 0 ? playlist[currentIndex - 1] : null
-    if (prevTrack && prevDirectUrlRef.current?.trackId !== prevTrack.id) {
-      fetch(`/api/stream-url?id=${prevTrack.id}`)
-        .then(res => res.json())
-        .then(({ url, token }) => {
-          prevDirectUrlRef.current = {
-            trackId: prevTrack!.id,
-            url: `${url}&access_token=${token}`
-          }
-        })
-        .catch(() => {})
     }
 
     // 캐시 정리: prev + current + next만 유지
@@ -803,59 +789,22 @@ export default function GlobalPlayer() {
     // blob URL은 JS 레벨에서 로딩되므로 백그라운드에서 실패.
     // HTTP URL은 iOS 네이티브 미디어 엔진이 처리하므로 JS suspend와 무관.
     //
-    // 해결: 미리 준비된 Google Drive 직접 URL로 스트리밍.
-    //       Google Drive → iPhone 직접 전송 (Vercel 트래픽 0)
-    //       URL+토큰은 곡 재생 중 /api/stream-url로 미리 가져옴 (~200바이트)
+    // 해결: /api/stream URL을 nextAudioRef에 미리 버퍼링 (포그라운드)
+    //       백그라운드에서 같은 URL → 브라우저 HTTP 캐시 히트
+    //       /api/stream은 Cache-Control: public, max-age=3600 설정
+    //       → 캐시 히트시 Vercel 트래픽 추가 0
     // ============================================================
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
     const isBackground = typeof document !== 'undefined' && document.hidden
 
     if (isIOS && isBackground && audioRef.current) {
-      // 미리 준비된 Google Drive 직접 URL 사용 (Vercel 트래픽 0)
-      const directUrl = nextDirectUrlRef.current?.trackId === nextTrack.id
-        ? nextDirectUrlRef.current.url
-        : null
-
-      if (directUrl) {
-        console.log('[GlobalPlayer] 🌐 iOS bg: Direct Google Drive URL for:', nextTrack.name || nextTrack.title)
-
-        if (prevWavUrlRef.current) {
-          URL.revokeObjectURL(prevWavUrlRef.current)
-          prevWavUrlRef.current = null
-        }
-
-        // Google Drive URL은 cross-origin이므로 crossOrigin 설정 안 함
-        // (crossOrigin 설정하면 CORS preflight 발생 → 실패 가능)
-        audioRef.current.srcObject = null
-        audioRef.current.loop = false
-        audioRef.current.removeAttribute('crossorigin')
-        audioRef.current.src = directUrl
-        audioRef.current.volume = isMuted ? 0 : volume
-        audioRef.current.playbackRate = playbackRate
-        setCurrentTime(0)
-        setDuration(0)
-        setIsFallbackMode(false)
-
-        const playPromise = audioRef.current.play()
-        if (playPromise) {
-          playPromise.catch(() => {
-            const h = () => {
-              audioRef.current?.play().catch(() => {})
-              audioRef.current?.removeEventListener('canplay', h)
-            }
-            audioRef.current?.addEventListener('canplay', h)
-          })
-        }
-
-        skipNextLoadRef.current = true
-        setTrack(nextTrack)
-        return
-      }
-      // directUrl이 없으면 /api/stream-redirect 사용
-      // 302 리다이렉트만 Vercel 거침 (~500바이트), 실제 오디오는 Google Drive 직접
-      console.log('[GlobalPlayer] 🔄 iOS bg: Using stream-redirect fallback for:', nextTrack.name || nextTrack.title)
-      const redirectUrl = `/api/stream-redirect?id=${nextTrack.id}`
+      // 미리 버퍼링된 /api/stream URL 사용 (브라우저 HTTP 캐시 히트 → Vercel 트래픽 0)
+      const streamUrl = nextStreamUrlRef.current?.trackId === nextTrack.id
+        ? nextStreamUrlRef.current.url
+        : `/api/stream?id=${nextTrack.id}&name=${encodeURIComponent(nextTrack.name || '')}&mimeType=${encodeURIComponent(nextTrack.mimeType || '')}`
+      
+      console.log('[GlobalPlayer] 🌐 iOS bg: HTTP stream for:', nextTrack.name || nextTrack.title)
 
       if (prevWavUrlRef.current) {
         URL.revokeObjectURL(prevWavUrlRef.current)
@@ -865,16 +814,16 @@ export default function GlobalPlayer() {
       audioRef.current.srcObject = null
       audioRef.current.loop = false
       audioRef.current.crossOrigin = 'anonymous'
-      audioRef.current.src = redirectUrl
+      audioRef.current.src = streamUrl
       audioRef.current.volume = isMuted ? 0 : volume
       audioRef.current.playbackRate = playbackRate
       setCurrentTime(0)
       setDuration(0)
       setIsFallbackMode(false)
 
-      const playPromise2 = audioRef.current.play()
-      if (playPromise2) {
-        playPromise2.catch(() => {
+      const playPromise = audioRef.current.play()
+      if (playPromise) {
+        playPromise.catch(() => {
           const h = () => {
             audioRef.current?.play().catch(() => {})
             audioRef.current?.removeEventListener('canplay', h)
@@ -975,47 +924,20 @@ export default function GlobalPlayer() {
       const isBackground = typeof document !== 'undefined' && document.hidden
 
       if (isIOS && isBackground && audioRef.current) {
-        // iOS 백그라운드: Google Drive 직접 URL 사용 (Vercel 트래픽 0)
+        // iOS 백그라운드: /api/stream URL 사용 (버퍼링된 URL은 캐시 히트)
         const { playlist, currentTrack } = usePlayerStore.getState()
         if (!currentTrack) { playPrev(); return }
         const currentIndex = playlist.findIndex(t => t.id === currentTrack.id)
         if (currentIndex <= 0) return
         const prevTrack = playlist[currentIndex - 1]
 
-        const directUrl = prevDirectUrlRef.current?.trackId === prevTrack.id
-          ? prevDirectUrlRef.current.url
-          : null
-
-        if (directUrl) {
-          console.log('[GlobalPlayer] 🌐 iOS bg prev: Direct Google Drive URL for:', prevTrack.name || prevTrack.title)
-          audioRef.current.srcObject = null
-          audioRef.current.loop = false
-          audioRef.current.removeAttribute('crossorigin')
-          audioRef.current.src = directUrl
-          audioRef.current.volume = isMuted ? 0 : volume
-          audioRef.current.playbackRate = playbackRate
-          setCurrentTime(0)
-          setDuration(0)
-          setIsFallbackMode(false)
-
-          audioRef.current.play().catch(() => {
-            const h = () => {
-              audioRef.current?.play().catch(() => {})
-              audioRef.current?.removeEventListener('canplay', h)
-            }
-            audioRef.current?.addEventListener('canplay', h)
-          })
-
-          skipNextLoadRef.current = true
-          setTrack(prevTrack)
-          return
-        }
-        // directUrl 없으면 /api/stream-redirect 폴백 (302만 Vercel, 오디오는 Google Drive 직접)
-        console.log('[GlobalPlayer] 🔄 iOS bg prev: Using stream-redirect for:', prevTrack.name || prevTrack.title)
+        const streamUrl = `/api/stream?id=${prevTrack.id}&name=${encodeURIComponent(prevTrack.name || '')}&mimeType=${encodeURIComponent(prevTrack.mimeType || '')}`
+        console.log('[GlobalPlayer] 🌐 iOS bg prev: HTTP stream for:', prevTrack.name || prevTrack.title)
+        
         audioRef.current.srcObject = null
         audioRef.current.loop = false
         audioRef.current.crossOrigin = 'anonymous'
-        audioRef.current.src = `/api/stream-redirect?id=${prevTrack.id}`
+        audioRef.current.src = streamUrl
         audioRef.current.volume = isMuted ? 0 : volume
         audioRef.current.playbackRate = playbackRate
         setCurrentTime(0)
