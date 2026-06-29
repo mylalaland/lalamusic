@@ -763,42 +763,45 @@ export default function GlobalPlayer() {
 
     if (!nextTrack) return
 
-    // [FIX] iOS 잠금화면 백그라운드 재생: 미리 준비된 URL이 있으면 async 없이 즉시 재생
-    // iOS는 화면 잠금 시 JS 실행을 중단하므로, onEnded 후 async 작업이 완료 불가.
-    // 미리 변환해둔 WAV나 캐시된 blob URL로 즉시 src 교체하면 재생이 끊기지 않음.
-    const immediateUrl = getImmediatePlayUrl(nextTrack)
-    if (immediateUrl && audioRef.current) {
-      console.log('[GlobalPlayer] ⚡ Immediate src swap for:', nextTrack.name || nextTrack.title)
+    // ============================================================
+    // [FIX] iOS 잠금화면/백그라운드 핵심 수정
+    // 
+    // 근본 원인: iOS Safari는 백그라운드에서 JS 실행을 suspend함.
+    // blob URL은 JS 레벨에서 로딩되므로 백그라운드에서 실패.
+    // HTTP URL은 iOS 네이티브 미디어 엔진이 처리하므로 JS suspend와 무관.
+    //
+    // 해결: 백그라운드에서는 /api/stream HTTP URL을 사용하여
+    //       iOS 네이티브 미디어 엔진이 직접 스트리밍하도록 함.
+    // ============================================================
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    const isBackground = typeof document !== 'undefined' && document.hidden
 
-      // 이전 WAV blob URL 정리
+    if (isIOS && isBackground && audioRef.current) {
+      // iOS 백그라운드: HTTP 스트리밍 URL로 즉시 재생
+      // /api/stream은 같은 도메인이므로 쿠키(인증)가 자동 포함됨
+      // iOS 네이티브 미디어 엔진이 HTTP 스트리밍을 직접 처리
+      const streamUrl = `/api/stream?id=${nextTrack.id}&name=${encodeURIComponent(nextTrack.name || '')}&mimeType=${encodeURIComponent(nextTrack.mimeType || '')}`
+      console.log('[GlobalPlayer] 🌐 iOS background: using HTTP stream for:', nextTrack.name || nextTrack.title)
+
+      // 이전 리소스 정리
       if (prevWavUrlRef.current) {
         URL.revokeObjectURL(prevWavUrlRef.current)
-      }
-      // 프리컨버전 WAV인 경우 duration 즉시 설정
-      if (nextWavCacheRef.current?.trackId === nextTrack.id) {
-        setDuration(nextWavCacheRef.current.duration)
-        prevWavUrlRef.current = nextWavCacheRef.current.wavUrl
-        nextWavCacheRef.current = null
-      } else {
         prevWavUrlRef.current = null
       }
 
-      // [FIX] iOS: nextAudioRef에 미리 로드된 WAV가 있으면 그것을 활용
-      // nextAudioRef는 preconvertToWav에서 미리 src가 설정되어 readyState가 높음
-      // 이것의 src를 메인 audioRef로 옮기면 브라우저가 같은 blob을 빠르게 로드
-      // (실제로는 동일한 blob URL이므로 캐시 히트)
-
-      // 즉시 src 교체 및 재생 (동기 작업만!)
+      // 즉시 HTTP URL로 교체 및 재생 (동기 작업만!)
       audioRef.current.srcObject = null
-      audioRef.current.loop = false  // [FIX] 이전 곡에서 loop=true였을 수 있으므로 해제
-      if (immediateUrl.startsWith('blob:')) audioRef.current.removeAttribute('crossorigin')
-      audioRef.current.src = immediateUrl
+      audioRef.current.loop = false
+      audioRef.current.crossOrigin = 'anonymous'
+      audioRef.current.src = streamUrl
       audioRef.current.volume = isMuted ? 0 : volume
       audioRef.current.playbackRate = playbackRate
       setCurrentTime(0)
+      setDuration(0)
       setIsFallbackMode(false)
 
-      // play()는 Promise이지만 iOS는 onEnded/nexttrack 핸들러 컨텍스트에서 허용
+      // play()는 iOS의 nexttrack/onEnded 핸들러 컨텍스트에서 허용됨
       const playPromise = audioRef.current.play()
       if (playPromise) {
         playPromise.catch(() => {
@@ -811,46 +814,60 @@ export default function GlobalPlayer() {
         })
       }
 
-      // React 상태 업데이트 (useEffect는 skip)
-      skipNextLoadRef.current = true
-      setTrack(nextTrack)
-      return
-    }
-
-    // [FIX] iOS 잠금화면: FLAC blob이 캐시에 있지만 WAV 프리컨버전이 안 된 경우
-    // 무음 WAV를 즉시 재생하여 iOS 세션을 유지하면서, 백그라운드에서 FLAC→WAV 변환 시도
-    const nextNeedsFallback = needsWebAudioFallback(
-      nextTrack.mimeType ?? undefined,
-      (nextTrack.name || nextTrack.title) ?? undefined
-    )
-    const cachedBlobUrl = getCachedUrl(nextTrack.id) || (nextTrack as any).src
-    if (nextNeedsFallback && cachedBlobUrl && audioRef.current) {
-      console.log('[GlobalPlayer] 🔄 FLAC cached but no WAV preconvert — converting now:', nextTrack.name || nextTrack.title)
-      
-      // [FIX] iOS 세션 유지: 무음 WAV를 loop로 재생 (1-sample WAV는 즉시 끝나서 안 됨)
-      // audioRef를 loop 모드로 두면 iOS가 "재생 중"으로 인식하여 JS suspend 방지
-      audioRef.current.src = SILENT_WAV
-      audioRef.current.loop = true  // 중요: loop 해야 iOS가 suspend 안 함
-      audioRef.current.play().catch(() => {})
-      
       // React 상태 업데이트 (useEffect의 loadAudioSource는 skip)
       skipNextLoadRef.current = true
-      metaTrackIdRef.current = nextTrack.id
       setTrack(nextTrack)
-      setCurrentTime(0)
-      
-      // [FIX] startFallbackPlayback에 targetTrackId 전달하여 stale closure 방지
-      // 이전에는 track?.id (이전 곡의 클로저)를 사용하여 비교가 실패했음
-      startFallbackPlayback(cachedBlobUrl, nextTrack.id)
       return
     }
 
-    // 프리컨버전 안 된 경우: 기존 async 플로우 (화면 켜져있을 때)
+    // ============================================================
+    // 포그라운드 (화면 켜져있을 때): 기존 blob URL 방식 (Vercel 트래픽 절약)
+    // ============================================================
+    const immediateUrl = getImmediatePlayUrl(nextTrack)
+    if (immediateUrl && audioRef.current) {
+      console.log('[GlobalPlayer] ⚡ Immediate src swap for:', nextTrack.name || nextTrack.title)
+
+      if (prevWavUrlRef.current) {
+        URL.revokeObjectURL(prevWavUrlRef.current)
+      }
+      if (nextWavCacheRef.current?.trackId === nextTrack.id) {
+        setDuration(nextWavCacheRef.current.duration)
+        prevWavUrlRef.current = nextWavCacheRef.current.wavUrl
+        nextWavCacheRef.current = null
+      } else {
+        prevWavUrlRef.current = null
+      }
+
+      audioRef.current.srcObject = null
+      audioRef.current.loop = false
+      if (immediateUrl.startsWith('blob:')) audioRef.current.removeAttribute('crossorigin')
+      audioRef.current.src = immediateUrl
+      audioRef.current.volume = isMuted ? 0 : volume
+      audioRef.current.playbackRate = playbackRate
+      setCurrentTime(0)
+      setIsFallbackMode(false)
+
+      const playPromise = audioRef.current.play()
+      if (playPromise) {
+        playPromise.catch(() => {
+          const h = () => {
+            audioRef.current?.play().catch(() => {})
+            audioRef.current?.removeEventListener('canplay', h)
+          }
+          audioRef.current?.addEventListener('canplay', h)
+        })
+      }
+
+      skipNextLoadRef.current = true
+      setTrack(nextTrack)
+      return
+    }
+
+    // 폴백: 프리로드 안 됨 — async 플로우 (화면 켜져있을 때만 작동)
     console.log('[GlobalPlayer] Normal async flow for:', nextTrack.name || nextTrack.title)
     setTrack(nextTrack)
     } catch (e) {
       console.error('[GlobalPlayer] handleNextWrapped error:', e)
-      // 에러 발생해도 keep-alive가 재생 중이므로 iOS 세션 유지됨
     }
   }
 
@@ -884,7 +901,47 @@ export default function GlobalPlayer() {
     if (currentTime > 3) {
       if (isFallbackMode && fallbackPlayerRef.current) fallbackPlayerRef.current.seek(0)
       else if (audioRef.current) audioRef.current.currentTime = 0
-    } else { playPrev() }
+    } else {
+      // iOS 백그라운드: HTTP 스트리밍 URL 사용 (blob URL은 iOS 잠금화면에서 로딩 불가)
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+      const isBackground = typeof document !== 'undefined' && document.hidden
+
+      const { playlist, currentTrack } = usePlayerStore.getState()
+      if (!currentTrack) { playPrev(); return }
+      const currentIndex = playlist.findIndex(t => t.id === currentTrack.id)
+      if (currentIndex <= 0) return
+
+      const prevTrack = playlist[currentIndex - 1]
+
+      if (isIOS && isBackground && audioRef.current) {
+        const streamUrl = `/api/stream?id=${prevTrack.id}&name=${encodeURIComponent(prevTrack.name || '')}&mimeType=${encodeURIComponent(prevTrack.mimeType || '')}`
+        console.log('[GlobalPlayer] 🌐 iOS background prev: using HTTP stream for:', prevTrack.name || prevTrack.title)
+
+        audioRef.current.srcObject = null
+        audioRef.current.loop = false
+        audioRef.current.crossOrigin = 'anonymous'
+        audioRef.current.src = streamUrl
+        audioRef.current.volume = isMuted ? 0 : volume
+        audioRef.current.playbackRate = playbackRate
+        setCurrentTime(0)
+        setDuration(0)
+        setIsFallbackMode(false)
+
+        audioRef.current.play().catch(() => {
+          const h = () => {
+            audioRef.current?.play().catch(() => {})
+            audioRef.current?.removeEventListener('canplay', h)
+          }
+          audioRef.current?.addEventListener('canplay', h)
+        })
+
+        skipNextLoadRef.current = true
+        setTrack(prevTrack)
+      } else {
+        playPrev()
+      }
+    }
   }
   const toggleSpeed = () => {
     const speeds = [1.0, 1.25, 1.5, 0.5]
