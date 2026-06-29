@@ -852,8 +852,40 @@ export default function GlobalPlayer() {
         setTrack(nextTrack)
         return
       }
-      // directUrl이 없으면 포그라운드 로직으로 폴백
-      console.log('[GlobalPlayer] ⚠️ iOS bg: No pre-fetched URL, falling through to foreground logic')
+      // directUrl이 없으면 /api/stream-redirect 사용
+      // 302 리다이렉트만 Vercel 거침 (~500바이트), 실제 오디오는 Google Drive 직접
+      console.log('[GlobalPlayer] 🔄 iOS bg: Using stream-redirect fallback for:', nextTrack.name || nextTrack.title)
+      const redirectUrl = `/api/stream-redirect?id=${nextTrack.id}`
+
+      if (prevWavUrlRef.current) {
+        URL.revokeObjectURL(prevWavUrlRef.current)
+        prevWavUrlRef.current = null
+      }
+
+      audioRef.current.srcObject = null
+      audioRef.current.loop = false
+      audioRef.current.crossOrigin = 'anonymous'
+      audioRef.current.src = redirectUrl
+      audioRef.current.volume = isMuted ? 0 : volume
+      audioRef.current.playbackRate = playbackRate
+      setCurrentTime(0)
+      setDuration(0)
+      setIsFallbackMode(false)
+
+      const playPromise2 = audioRef.current.play()
+      if (playPromise2) {
+        playPromise2.catch(() => {
+          const h = () => {
+            audioRef.current?.play().catch(() => {})
+            audioRef.current?.removeEventListener('canplay', h)
+          }
+          audioRef.current?.addEventListener('canplay', h)
+        })
+      }
+
+      skipNextLoadRef.current = true
+      setTrack(nextTrack)
+      return
     }
 
     // ============================================================
@@ -978,6 +1010,29 @@ export default function GlobalPlayer() {
           setTrack(prevTrack)
           return
         }
+        // directUrl 없으면 /api/stream-redirect 폴백 (302만 Vercel, 오디오는 Google Drive 직접)
+        console.log('[GlobalPlayer] 🔄 iOS bg prev: Using stream-redirect for:', prevTrack.name || prevTrack.title)
+        audioRef.current.srcObject = null
+        audioRef.current.loop = false
+        audioRef.current.crossOrigin = 'anonymous'
+        audioRef.current.src = `/api/stream-redirect?id=${prevTrack.id}`
+        audioRef.current.volume = isMuted ? 0 : volume
+        audioRef.current.playbackRate = playbackRate
+        setCurrentTime(0)
+        setDuration(0)
+        setIsFallbackMode(false)
+
+        audioRef.current.play().catch(() => {
+          const h = () => {
+            audioRef.current?.play().catch(() => {})
+            audioRef.current?.removeEventListener('canplay', h)
+          }
+          audioRef.current?.addEventListener('canplay', h)
+        })
+
+        skipNextLoadRef.current = true
+        setTrack(prevTrack)
+        return
       }
       playPrev()
     }
