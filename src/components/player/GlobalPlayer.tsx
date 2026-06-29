@@ -77,6 +77,14 @@ export default function GlobalPlayer() {
   const [playlistAdded, setPlaylistAdded] = useState(false)
   const preloadAbortRef = useRef<(() => void) | null>(null)
 
+  // [FIX] iOS 잠금화면: 핸들러 함수를 ref로 감싸서 Media Session이 항상 최신 클로저를 호출하도록 함
+  // Media Session setActionHandler는 등록 시점의 클로저를 캡처하므로,
+  // playlist/volume/repeatMode 등이 바뀌면 stale 값을 참조하는 버그 발생.
+  // ref를 통해 간접 호출하면 항상 최신 상태를 사용함.
+  const handleNextRef = useRef<() => void>(() => {})
+  const handlePrevRef = useRef<() => void>(() => {})
+  const handleToggleRef = useRef<() => void>(() => {})
+
   
   const handleTogglePlay = () => {
     unlockAllAudioContexts().catch(() => {})
@@ -786,6 +794,31 @@ export default function GlobalPlayer() {
       return
     }
 
+    // [FIX] iOS 잠금화면: FLAC blob이 캐시에 있지만 WAV 프리컨버전이 안 된 경우
+    // 무음 WAV를 즉시 재생하여 iOS 세션을 유지하면서, 백그라운드에서 FLAC→WAV 변환 시도
+    const nextNeedsFallback = needsWebAudioFallback(
+      nextTrack.mimeType ?? undefined,
+      (nextTrack.name || nextTrack.title) ?? undefined
+    )
+    const cachedBlobUrl = getCachedUrl(nextTrack.id) || (nextTrack as any).src
+    if (nextNeedsFallback && cachedBlobUrl && audioRef.current) {
+      console.log('[GlobalPlayer] 🔄 FLAC cached but no WAV preconvert — converting now:', nextTrack.name || nextTrack.title)
+      
+      // 즉시 무음 WAV를 재생하여 iOS가 JS suspend하지 않도록 세션 유지
+      audioRef.current.src = SILENT_WAV
+      audioRef.current.play().catch(() => {})
+      
+      // React 상태 업데이트 (useEffect의 loadAudioSource는 skip)
+      skipNextLoadRef.current = true
+      metaTrackIdRef.current = nextTrack.id
+      setTrack(nextTrack)
+      setCurrentTime(0)
+      
+      // 백그라운드에서 FLAC→WAV 변환 후 즉시 재생
+      startFallbackPlayback(cachedBlobUrl)
+      return
+    }
+
     // 프리컨버전 안 된 경우: 기존 async 플로우 (화면 켜져있을 때)
     console.log('[GlobalPlayer] Normal async flow for:', nextTrack.name || nextTrack.title)
     setTrack(nextTrack)
@@ -852,7 +885,15 @@ export default function GlobalPlayer() {
         : ((track as any).duration || 0))
     : 0
 
-  // Media Session API
+  // [FIX] iOS 잠금화면: 핸들러 ref를 매 렌더마다 최신으로 갱신
+  // 이렇게 하면 Media Session이 ref를 통해 항상 최신 함수를 호출
+  useEffect(() => {
+    handleNextRef.current = handleNextWrapped
+    handlePrevRef.current = handlePrevWrapped
+    handleToggleRef.current = handleTogglePlay
+  })
+
+  // Media Session API — 핸들러는 ref를 통해 간접 호출 (stale closure 방지)
   useEffect(() => {
     if (!track || !navigator.mediaSession) return
     const title = track.title || track.name?.replace(/\.(mp3|wav|flac|m4a)$/i, '') || 'Unknown Title'
@@ -868,10 +909,11 @@ export default function GlobalPlayer() {
     }
     navigator.mediaSession.metadata = new MediaMetadata({ title, artist, album, artwork })
     try {
-      navigator.mediaSession.setActionHandler('play', () => handleTogglePlay())
-      navigator.mediaSession.setActionHandler('pause', () => handleTogglePlay())
-      navigator.mediaSession.setActionHandler('previoustrack', () => handlePrevWrapped())
-      navigator.mediaSession.setActionHandler('nexttrack', () => handleNextWrapped())
+      // [FIX] ref를 통한 간접 호출 — 등록 시점이 아닌 호출 시점의 최신 상태 사용
+      navigator.mediaSession.setActionHandler('play', () => handleToggleRef.current())
+      navigator.mediaSession.setActionHandler('pause', () => handleToggleRef.current())
+      navigator.mediaSession.setActionHandler('previoustrack', () => handlePrevRef.current())
+      navigator.mediaSession.setActionHandler('nexttrack', () => handleNextRef.current())
       navigator.mediaSession.setActionHandler('seekto', (details) => {
         if (details.seekTime !== undefined && audioRef.current) {
           audioRef.current.currentTime = details.seekTime
@@ -956,7 +998,7 @@ export default function GlobalPlayer() {
         ref={audioRef} preload="auto" playsInline 
         onTimeUpdate={handleTimeUpdate} 
         onLoadedMetadata={handleLoadedMetadata} 
-        onEnded={handleNextWrapped}
+        onEnded={() => handleNextRef.current()}
         onError={handleAudioError}
         onProgress={handleProgress}
       />
