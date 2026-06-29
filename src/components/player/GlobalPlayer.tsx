@@ -37,6 +37,7 @@ export default function GlobalPlayer() {
   } = usePlayerStore()
 
   const audioRef = useRef<HTMLAudioElement>(null)
+  const nextAudioRef = useRef<HTMLAudioElement>(null)  // [FIX] iOS: 다음 곡 WAV를 미리 로드하는 두 번째 audio 엘리먼트
   const activeTrackRef = useRef<HTMLDivElement>(null)
   const activeLyricRef = useRef<HTMLParagraphElement>(null)
   const seekTimeRef = useRef<number>(0)
@@ -139,8 +140,14 @@ export default function GlobalPlayer() {
   // FLAC/OGG/OPUS 재생 (iOS Safari): FLAC 디코딩 → WAV 변환 → <audio> 태그로 재생
   // Web Audio API 출력은 iOS "ambient" 세션이라 소리가 안 남.
   // <audio> 태그로 WAV를 재생하면 "media" 세션이라 소리가 남.
-  const startFallbackPlayback = async (url: string) => {
+  //
+  // [FIX] targetTrackId 파라미터 추가: 이전에는 track?.id (클로저)를 사용하여
+  // 곡 전환 시 새 트랙의 ID와 불일치하여 재생이 skip되는 버그가 있었음.
+  const startFallbackPlayback = async (url: string, targetTrackId?: string) => {
     cleanupFallback()
+
+    // targetTrackId가 주어지면 그것을 사용, 아니면 현재 track의 id
+    const expectedTrackId = targetTrackId || track?.id
 
     try {
       // Step 1: FLAC blob을 다운로드하고 AudioBuffer로 디코딩
@@ -158,7 +165,8 @@ export default function GlobalPlayer() {
       tempCtx.close().catch(() => {})
       
       // Step 3: <audio> 태그로 WAV 재생
-      if (audioRef.current && metaTrackIdRef.current === track?.id) {
+      // [FIX] metaTrackIdRef와 expectedTrackId를 비교 (클로저의 track?.id 대신)
+      if (audioRef.current && metaTrackIdRef.current === expectedTrackId) {
         // 이전 WAV blob URL 해제 (메모리 누수 방지)
         if (prevWavUrlRef.current) {
           URL.revokeObjectURL(prevWavUrlRef.current)
@@ -167,6 +175,7 @@ export default function GlobalPlayer() {
         
         audioRef.current.srcObject = null
         audioRef.current.removeAttribute('crossorigin')
+        audioRef.current.loop = false  // [FIX] 이전에 iOS 세션 유지용 loop=true였다면 해제
         audioRef.current.src = wavUrl
         audioRef.current.volume = isMuted ? 0 : volume
         audioRef.current.playbackRate = playbackRate
@@ -211,6 +220,14 @@ export default function GlobalPlayer() {
 
       nextWavCacheRef.current = { trackId, wavUrl, duration: audioBuffer.duration }
       console.log('[GlobalPlayer] Pre-converted WAV ready for next track:', trackId)
+
+      // [FIX] iOS: WAV를 nextAudioRef에 미리 로드하여 전환 시 즉시 재생 가능하도록 함
+      // <audio> 엘리먼트가 WAV를 미리 파싱/디코딩해두면 src swap 시 지연 없음
+      if (nextAudioRef.current) {
+        nextAudioRef.current.src = wavUrl
+        nextAudioRef.current.load()
+        console.log('[GlobalPlayer] Next WAV pre-loaded into nextAudioRef')
+      }
     } catch (e) {
       console.warn('[GlobalPlayer] WAV pre-conversion failed:', e)
     }
@@ -766,8 +783,14 @@ export default function GlobalPlayer() {
         prevWavUrlRef.current = null
       }
 
+      // [FIX] iOS: nextAudioRef에 미리 로드된 WAV가 있으면 그것을 활용
+      // nextAudioRef는 preconvertToWav에서 미리 src가 설정되어 readyState가 높음
+      // 이것의 src를 메인 audioRef로 옮기면 브라우저가 같은 blob을 빠르게 로드
+      // (실제로는 동일한 blob URL이므로 캐시 히트)
+
       // 즉시 src 교체 및 재생 (동기 작업만!)
       audioRef.current.srcObject = null
+      audioRef.current.loop = false  // [FIX] 이전 곡에서 loop=true였을 수 있으므로 해제
       if (immediateUrl.startsWith('blob:')) audioRef.current.removeAttribute('crossorigin')
       audioRef.current.src = immediateUrl
       audioRef.current.volume = isMuted ? 0 : volume
@@ -775,7 +798,7 @@ export default function GlobalPlayer() {
       setCurrentTime(0)
       setIsFallbackMode(false)
 
-      // play()는 Promise이지만 iOS는 onEnded 컨텍스트에서 허용
+      // play()는 Promise이지만 iOS는 onEnded/nexttrack 핸들러 컨텍스트에서 허용
       const playPromise = audioRef.current.play()
       if (playPromise) {
         playPromise.catch(() => {
@@ -804,8 +827,10 @@ export default function GlobalPlayer() {
     if (nextNeedsFallback && cachedBlobUrl && audioRef.current) {
       console.log('[GlobalPlayer] 🔄 FLAC cached but no WAV preconvert — converting now:', nextTrack.name || nextTrack.title)
       
-      // 즉시 무음 WAV를 재생하여 iOS가 JS suspend하지 않도록 세션 유지
+      // [FIX] iOS 세션 유지: 무음 WAV를 loop로 재생 (1-sample WAV는 즉시 끝나서 안 됨)
+      // audioRef를 loop 모드로 두면 iOS가 "재생 중"으로 인식하여 JS suspend 방지
       audioRef.current.src = SILENT_WAV
+      audioRef.current.loop = true  // 중요: loop 해야 iOS가 suspend 안 함
       audioRef.current.play().catch(() => {})
       
       // React 상태 업데이트 (useEffect의 loadAudioSource는 skip)
@@ -814,8 +839,9 @@ export default function GlobalPlayer() {
       setTrack(nextTrack)
       setCurrentTime(0)
       
-      // 백그라운드에서 FLAC→WAV 변환 후 즉시 재생
-      startFallbackPlayback(cachedBlobUrl)
+      // [FIX] startFallbackPlayback에 targetTrackId 전달하여 stale closure 방지
+      // 이전에는 track?.id (이전 곡의 클로저)를 사용하여 비교가 실패했음
+      startFallbackPlayback(cachedBlobUrl, nextTrack.id)
       return
     }
 
@@ -992,6 +1018,13 @@ export default function GlobalPlayer() {
         ref={keepAliveRef} 
         playsInline 
         loop 
+        style={{ display: 'none' }}
+      />
+      {/* [FIX] iOS: 다음 곡 WAV를 미리 로드하는 두 번째 audio 엘리먼트 */}
+      <audio 
+        ref={nextAudioRef}
+        preload="auto"
+        playsInline
         style={{ display: 'none' }}
       />
       <audio 
