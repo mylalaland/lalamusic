@@ -780,103 +780,31 @@ export default function GlobalPlayer() {
       }
     }
 
-    if (!nextTrack) return
-
     // ============================================================
-    // [FIX] iOS 잠금화면/백그라운드 핵심 수정
-    // 
-    // 근본 원인: iOS Safari는 백그라운드에서 JS 실행을 suspend함.
-    // blob URL은 JS 레벨에서 로딩되므로 백그라운드에서 실패.
-    // HTTP URL은 iOS 네이티브 미디어 엔진이 처리하므로 JS suspend와 무관.
-    //
-    // 해결: /api/stream URL을 nextAudioRef에 미리 버퍼링 (포그라운드)
-    //       백그라운드에서 같은 URL → 브라우저 HTTP 캐시 히트
-    //       /api/stream은 Cache-Control: public, max-age=3600 설정
-    //       → 캐시 히트시 Vercel 트래픽 추가 0
+    // [FIX] blob URL은 이미 메모리에 있으므로 네트워크 요청 불필요.
+    // iOS 백그라운드에서도 blob URL은 즉시 로드됨 (HTTP는 STALL됨).
+    // 포그라운드/백그라운드 구분 없이 blob URL을 먼저 시도.
     // ============================================================
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
     const isBackground = typeof document !== 'undefined' && document.hidden
 
-    if (isIOS && isBackground && audioRef.current) {
-      // ======== DEBUG: 잠금화면에서 보이는 디버그 마커 ========
-      const debugMeta = (step: string) => {
-        if (navigator.mediaSession) {
-          const title = nextTrack?.title || nextTrack?.name?.replace(/\.(mp3|wav|flac|m4a)$/i, '') || 'Unknown'
-          navigator.mediaSession.metadata = new MediaMetadata({
-            title,
-            artist: step,
-            album: 'Lala Music DEBUG',
-          })
-        }
+    // DEBUG: 잠금화면에서 보이는 디버그 마커
+    const debugMeta = (step: string) => {
+      if (navigator.mediaSession) {
+        const title = nextTrack?.title || nextTrack?.name?.replace(/\.(mp3|wav|flac|m4a)$/i, '') || 'Unknown'
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title, artist: step, album: 'Lala Music DEBUG',
+        })
       }
-      
-      debugMeta('[1] BG-NEXT called')
-      
-      // 미리 버퍼링된 /api/stream URL 사용
-      const hasCachedUrl = nextStreamUrlRef.current?.trackId === nextTrack.id
-      const streamUrl = hasCachedUrl
-        ? nextStreamUrlRef.current!.url
-        : `/api/stream?id=${nextTrack.id}&name=${encodeURIComponent(nextTrack.name || '')}&mimeType=${encodeURIComponent(nextTrack.mimeType || '')}`
-      
-      debugMeta(`[2] cached=${hasCachedUrl ? 'Y' : 'N'}`)
-
-      if (prevWavUrlRef.current) {
-        URL.revokeObjectURL(prevWavUrlRef.current)
-        prevWavUrlRef.current = null
-      }
-
-      audioRef.current.srcObject = null
-      audioRef.current.loop = false
-      audioRef.current.crossOrigin = 'anonymous'
-      audioRef.current.src = streamUrl
-      audioRef.current.volume = isMuted ? 0 : volume
-      audioRef.current.playbackRate = playbackRate
-      setCurrentTime(0)
-      setDuration(0)
-      setIsFallbackMode(false)
-      
-      debugMeta(`[3] src set, readyState=${audioRef.current.readyState}`)
-
-      // 오디오 이벤트 디버그 리스너
-      const dbgCanplay = () => { debugMeta('[5] canplay fired'); audioRef.current?.removeEventListener('canplay', dbgCanplay) }
-      const dbgError = () => { 
-        const err = audioRef.current?.error
-        debugMeta(`[ERR] code=${err?.code} msg=${err?.message?.slice(0, 30)}`)
-        audioRef.current?.removeEventListener('error', dbgError) 
-      }
-      const dbgStalled = () => { debugMeta('[STALL] stalled event'); audioRef.current?.removeEventListener('stalled', dbgStalled) }
-      const dbgWaiting = () => { debugMeta('[WAIT] waiting event'); audioRef.current?.removeEventListener('waiting', dbgWaiting) }
-      audioRef.current.addEventListener('canplay', dbgCanplay)
-      audioRef.current.addEventListener('error', dbgError)
-      audioRef.current.addEventListener('stalled', dbgStalled)
-      audioRef.current.addEventListener('waiting', dbgWaiting)
-
-      const playPromise = audioRef.current.play()
-      if (playPromise) {
-        playPromise
-          .then(() => { debugMeta('[4] play() OK') })
-          .catch((e) => {
-            debugMeta(`[4] play() FAIL: ${e.name}`)
-            const h = () => {
-              audioRef.current?.play().catch(() => {})
-              audioRef.current?.removeEventListener('canplay', h)
-            }
-            audioRef.current?.addEventListener('canplay', h)
-          })
-      }
-
-      skipNextLoadRef.current = true
-      setTrack(nextTrack)
-      return
     }
+    if (isBackground) debugMeta('[1] BG-NEXT')
 
-    // ============================================================
-    // 포그라운드 (화면 켜져있을 때): 기존 blob URL 방식 (Vercel 트래픽 절약)
-    // ============================================================
+    // 1순위: 프리로드된 blob URL 사용 (메모리에서 즉시 로드 — 네트워크 요청 없음!)
     const immediateUrl = getImmediatePlayUrl(nextTrack)
     if (immediateUrl && audioRef.current) {
-      console.log('[GlobalPlayer] ⚡ Immediate src swap for:', nextTrack.name || nextTrack.title)
+      if (isBackground) debugMeta(`[2] blob found: ${immediateUrl.slice(0, 20)}...`)
+      console.log('[GlobalPlayer] ⚡ Immediate blob src swap for:', nextTrack.name || nextTrack.title)
 
       if (prevWavUrlRef.current) {
         URL.revokeObjectURL(prevWavUrlRef.current)
@@ -898,15 +826,20 @@ export default function GlobalPlayer() {
       setCurrentTime(0)
       setIsFallbackMode(false)
 
+      if (isBackground) debugMeta(`[3] src set, readyState=${audioRef.current.readyState}`)
+
       const playPromise = audioRef.current.play()
       if (playPromise) {
-        playPromise.catch(() => {
-          const h = () => {
-            audioRef.current?.play().catch(() => {})
-            audioRef.current?.removeEventListener('canplay', h)
-          }
-          audioRef.current?.addEventListener('canplay', h)
-        })
+        playPromise
+          .then(() => { if (isBackground) debugMeta('[4] play() OK — blob') })
+          .catch(() => {
+            if (isBackground) debugMeta('[4] play() FAIL — retry on canplay')
+            const h = () => {
+              audioRef.current?.play().catch(() => {})
+              audioRef.current?.removeEventListener('canplay', h)
+            }
+            audioRef.current?.addEventListener('canplay', h)
+          })
       }
 
       skipNextLoadRef.current = true
@@ -914,7 +847,19 @@ export default function GlobalPlayer() {
       return
     }
 
-    // 폴백: 프리로드 안 됨 — async 플로우 (화면 켜져있을 때만 작동)
+    // 2순위: blob이 없는 경우
+    if (isBackground) {
+      debugMeta('[X] No blob cached — cannot play in BG')
+      // iOS 백그라운드에서는 새 HTTP 요청 불가 (STALL됨)
+      // 프리로드가 안 된 곡은 백그라운드에서 재생 불가
+      console.log('[GlobalPlayer] ❌ iOS bg: No cached blob, skipping')
+      // 그래도 트랙은 변경하여 다음에 포그라운드로 오면 재생되도록
+      skipNextLoadRef.current = false
+      setTrack(nextTrack)
+      return
+    }
+
+    // 포그라운드: async 플로우 (useEffect가 loadAudioSource 실행)
     console.log('[GlobalPlayer] Normal async flow for:', nextTrack.name || nextTrack.title)
     setTrack(nextTrack)
     } catch (e) {
@@ -953,40 +898,43 @@ export default function GlobalPlayer() {
       if (isFallbackMode && fallbackPlayerRef.current) fallbackPlayerRef.current.seek(0)
       else if (audioRef.current) audioRef.current.currentTime = 0
     } else {
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
       const isBackground = typeof document !== 'undefined' && document.hidden
 
-      if (isIOS && isBackground && audioRef.current) {
-        // iOS 백그라운드: /api/stream URL 사용 (버퍼링된 URL은 캐시 히트)
+      if (isBackground && audioRef.current) {
+        // iOS 백그라운드: blob URL 사용 (메모리에서 즉시 — HTTP는 STALL)
         const { playlist, currentTrack } = usePlayerStore.getState()
         if (!currentTrack) { playPrev(); return }
         const currentIndex = playlist.findIndex(t => t.id === currentTrack.id)
         if (currentIndex <= 0) return
         const prevTrack = playlist[currentIndex - 1]
 
-        const streamUrl = `/api/stream?id=${prevTrack.id}&name=${encodeURIComponent(prevTrack.name || '')}&mimeType=${encodeURIComponent(prevTrack.mimeType || '')}`
-        console.log('[GlobalPlayer] 🌐 iOS bg prev: HTTP stream for:', prevTrack.name || prevTrack.title)
-        
-        audioRef.current.srcObject = null
-        audioRef.current.loop = false
-        audioRef.current.crossOrigin = 'anonymous'
-        audioRef.current.src = streamUrl
-        audioRef.current.volume = isMuted ? 0 : volume
-        audioRef.current.playbackRate = playbackRate
-        setCurrentTime(0)
-        setDuration(0)
-        setIsFallbackMode(false)
+        // 프리로드된 blob URL 확인
+        const immediateUrl = getImmediatePlayUrl(prevTrack)
+        if (immediateUrl) {
+          audioRef.current.srcObject = null
+          audioRef.current.loop = false
+          if (immediateUrl.startsWith('blob:')) audioRef.current.removeAttribute('crossorigin')
+          audioRef.current.src = immediateUrl
+          audioRef.current.volume = isMuted ? 0 : volume
+          audioRef.current.playbackRate = playbackRate
+          setCurrentTime(0)
+          setDuration(0)
+          setIsFallbackMode(false)
 
-        audioRef.current.play().catch(() => {
-          const h = () => {
-            audioRef.current?.play().catch(() => {})
-            audioRef.current?.removeEventListener('canplay', h)
-          }
-          audioRef.current?.addEventListener('canplay', h)
-        })
+          audioRef.current.play().catch(() => {
+            const h = () => {
+              audioRef.current?.play().catch(() => {})
+              audioRef.current?.removeEventListener('canplay', h)
+            }
+            audioRef.current?.addEventListener('canplay', h)
+          })
 
-        skipNextLoadRef.current = true
+          skipNextLoadRef.current = true
+          setTrack(prevTrack)
+          return
+        }
+        // blob 없으면 트랙만 변경 (포그라운드 복귀시 재생)
+        skipNextLoadRef.current = false
         setTrack(prevTrack)
         return
       }
