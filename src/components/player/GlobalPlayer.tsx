@@ -52,7 +52,8 @@ export default function GlobalPlayer() {
   const nextWavCacheRef = useRef<{ trackId: string, wavUrl: string, duration: number } | null>(null)
   const skipNextLoadRef = useRef(false)
   const keepAliveRef = useRef<HTMLAudioElement>(null)
-  const wavConvertPromiseRef = useRef<Promise<void> | null>(null)  // WAV 프리컨버전 완료 추적
+  const wavConvertPromiseRef = useRef<Promise<void> | null>(null)
+  const preconvertingTrackRef = useRef<string | null>(null)  // 동시 preconvert 방지
 
 
   
@@ -205,17 +206,22 @@ export default function GlobalPlayer() {
   // [NEW] 다음 FLAC 트랙을 미리 WAV로 변환 (iOS 잠금화면 백그라운드 재생용)
   // 현재 곡 재생 중 미리 변환해두면, 곡이 끝날 때 async 없이 즉시 src 교체 가능
   const preconvertToWav = async (trackId: string, blobUrl: string) => {
+    // [FIX] 동시 호출 방지 — playlist 변경으로 effect가 재실행되면
+    // 같은 trackId로 2번 호출되어 같은 fallbackCtx에서 decodeAudioData 충돌 발생
+    if (preconvertingTrackRef.current === trackId) return
+    if (nextWavCacheRef.current?.trackId === trackId) return // 이미 완료됨
+
+    preconvertingTrackRef.current = trackId
+
     const doConvert = async () => {
       try {
-        // 이전 프리컨버전 정리
+        // 이전 프리컨버전 정리 (다른 트랙의 WAV)
         if (nextWavCacheRef.current && nextWavCacheRef.current.trackId !== trackId) {
           URL.revokeObjectURL(nextWavCacheRef.current.wavUrl)
           nextWavCacheRef.current = null
         }
-        if (nextWavCacheRef.current?.trackId === trackId) return // 이미 변환됨
 
-        console.log('[GlobalPlayer] Pre-converting next FLAC → WAV...')
-        // [FIX] iOS AudioContext 생성 제한(~4개) 방지: 싱글톤 사용
+        console.log('[GlobalPlayer] Pre-converting next FLAC → WAV for:', trackId.slice(0, 8))
         const ctx = getFallbackAudioContext()
         if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
         const response = await fetch(blobUrl)
@@ -225,18 +231,21 @@ export default function GlobalPlayer() {
         const wavUrl = URL.createObjectURL(wavBlob)
 
         nextWavCacheRef.current = { trackId, wavUrl, duration: audioBuffer.duration }
-        console.log('[GlobalPlayer] ✅ Pre-converted WAV ready for next track:', trackId.slice(0, 8))
+        console.log('[GlobalPlayer] ✅ WAV preconvert done:', trackId.slice(0, 8))
 
-        // [FIX] iOS: WAV를 nextAudioRef에 미리 로드하여 전환 시 즉시 재생 가능하도록 함
+        // iOS: nextAudioRef에 미리 로드 (전환 시 파싱 지연 방지)
         if (nextAudioRef.current) {
           nextAudioRef.current.src = wavUrl
           nextAudioRef.current.load()
         }
       } catch (e) {
-        console.warn('[GlobalPlayer] ❌ WAV pre-conversion failed:', e)
+        console.warn('[GlobalPlayer] ❌ WAV preconvert failed:', e)
+      } finally {
+        if (preconvertingTrackRef.current === trackId) {
+          preconvertingTrackRef.current = null
+        }
       }
     }
-    // Promise를 저장하여 백그라운드 핸들러에서 대기 가능하도록
     const promise = doConvert()
     wavConvertPromiseRef.current = promise
     return promise
@@ -650,7 +659,7 @@ export default function GlobalPlayer() {
     if (currentIndex > 0) keepIds.push(playlist[currentIndex - 1].id)
     if (nextTrack) keepIds.push(nextTrack.id)
     releaseAllExcept(keepIds)
-  }, [track?.id, playlist])
+  }, [track?.id, playlist, repeatMode])
 
   // 재생 상태 동기화 — UI 버튼으로 play/pause 토글
   useEffect(() => {
@@ -741,181 +750,95 @@ export default function GlobalPlayer() {
     setIsSeeking(false)
   }
 
-  const handleNextWrapped = async () => {
+  // [CRITICAL] 이 함수는 반드시 동기(sync)여야 함!
+  // iOS Safari는 백그라운드에서 async 함수의 await 지점에서 JS 실행을 죽임.
+  // 모든 async 작업(WAV 변환)은 포그라운드에서 미리 완료되어야 함.
+  const handleNextWrapped = () => {
     try {
-    if (!track) return
-    // [FIX] iOS: keep-alive가 재생 중인지 확인하고, 아니면 시작
-    startKeepAlive()
-    if (repeatMode === 'one') {
-      if (isFallbackMode && fallbackPlayerRef.current) {
-        fallbackPlayerRef.current.seek(0)
-        fallbackPlayerRef.current.play()
-      } else if (audioRef.current) {
-        audioRef.current.currentTime = 0
-        audioRef.current.play().catch(() => {})
-      }
-      return
-    }
+      if (!track) return
+      startKeepAlive()
 
-    // 다음 트랙 결정
-    let nextTrack: MusicFile | null = null
-    if (isShuffle && playlist.length > 0) {
-      nextTrack = playlist[Math.floor(Math.random() * playlist.length)]
-    } else {
-      const currentIndex = playlist.findIndex(p => p.id === track.id)
-      const isLast = currentIndex === playlist.length - 1
-      if (isLast) {
-        if (repeatMode === 'all') nextTrack = playlist[0]
-        else { if (isPlaying) togglePlay(); return }
+      if (repeatMode === 'one') {
+        if (isFallbackMode && fallbackPlayerRef.current) {
+          fallbackPlayerRef.current.seek(0)
+          fallbackPlayerRef.current.play()
+        } else if (audioRef.current) {
+          audioRef.current.currentTime = 0
+          audioRef.current.play().catch(() => {})
+        }
+        return
+      }
+
+      // 다음 트랙 결정
+      let nextTrack: MusicFile | null = null
+      if (isShuffle && playlist.length > 0) {
+        nextTrack = playlist[Math.floor(Math.random() * playlist.length)]
       } else {
-        nextTrack = playlist[currentIndex + 1]
-      }
-    }
-
-    // ============================================================
-    // [FIX] blob URL은 이미 메모리에 있으므로 네트워크 요청 불필요.
-    // iOS 백그라운드에서도 blob URL은 즉시 로드됨 (HTTP는 STALL됨).
-    // 포그라운드/백그라운드 구분 없이 blob URL을 먼저 시도.
-    // ============================================================
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-    const isBackground = typeof document !== 'undefined' && document.hidden
-
-
-
-    // 1순위: 프리로드된 blob URL 사용 (메모리에서 즉시 로드 — 네트워크 요청 없음!)
-    const immediateUrl = getImmediatePlayUrl(nextTrack)
-    
-
-
-    if (immediateUrl && audioRef.current) {
-
-      console.log('[GlobalPlayer] ⚡ Immediate blob src swap for:', nextTrack.name || nextTrack.title)
-
-      if (prevWavUrlRef.current) {
-        URL.revokeObjectURL(prevWavUrlRef.current)
-      }
-      if (nextWavCacheRef.current?.trackId === nextTrack.id) {
-        setDuration(nextWavCacheRef.current.duration)
-        prevWavUrlRef.current = nextWavCacheRef.current.wavUrl
-        nextWavCacheRef.current = null
-      } else {
-        prevWavUrlRef.current = null
+        const currentIndex = playlist.findIndex(p => p.id === track.id)
+        const isLast = currentIndex === playlist.length - 1
+        if (isLast) {
+          if (repeatMode === 'all') nextTrack = playlist[0]
+          else { if (isPlaying) togglePlay(); return }
+        } else {
+          nextTrack = playlist[currentIndex + 1]
+        }
       }
 
-      audioRef.current.srcObject = null
-      audioRef.current.loop = false
-      if (immediateUrl.startsWith('blob:')) audioRef.current.removeAttribute('crossorigin')
-      audioRef.current.src = immediateUrl
-      audioRef.current.volume = isMuted ? 0 : volume
-      audioRef.current.playbackRate = playbackRate
-      setCurrentTime(0)
-      setIsFallbackMode(false)
+      if (!nextTrack) return
 
+      const isBackground = typeof document !== 'undefined' && document.hidden
 
+      // 1순위: 프리로드된 blob/WAV URL (동기적, 네트워크 0)
+      const immediateUrl = getImmediatePlayUrl(nextTrack)
 
-      const playPromise = audioRef.current.play()
-      if (playPromise) {
-        playPromise
-          .then(() => {})
-          .catch(() => {
+      if (immediateUrl && audioRef.current) {
+        console.log('[GlobalPlayer] ⚡ Immediate src swap for:', nextTrack.name || nextTrack.title)
 
+        if (prevWavUrlRef.current) URL.revokeObjectURL(prevWavUrlRef.current)
+        if (nextWavCacheRef.current?.trackId === nextTrack.id) {
+          setDuration(nextWavCacheRef.current.duration)
+          prevWavUrlRef.current = nextWavCacheRef.current.wavUrl
+          nextWavCacheRef.current = null
+        } else {
+          prevWavUrlRef.current = null
+        }
+
+        audioRef.current.srcObject = null
+        audioRef.current.loop = false
+        if (immediateUrl.startsWith('blob:')) audioRef.current.removeAttribute('crossorigin')
+        audioRef.current.src = immediateUrl
+        audioRef.current.volume = isMuted ? 0 : volume
+        audioRef.current.playbackRate = playbackRate
+        setCurrentTime(0)
+        setIsFallbackMode(false)
+
+        const playPromise = audioRef.current.play()
+        if (playPromise) {
+          playPromise.then(() => {}).catch(() => {
             const h = () => {
               audioRef.current?.play().catch(() => {})
               audioRef.current?.removeEventListener('canplay', h)
             }
             audioRef.current?.addEventListener('canplay', h)
           })
+        }
+
+        skipNextLoadRef.current = true
+        setTrack(nextTrack)
+        return
       }
 
-      skipNextLoadRef.current = true
+      // 2순위: immediate URL 없음
+      if (isBackground) {
+        // [CRITICAL] 백그라운드에서는 await 절대 불가 — iOS가 JS 죽임
+        // WAV가 준비 안 됐으면 현재 곡 유지 (최후 안전장치)
+        console.log('[GlobalPlayer] ❌ iOS bg: WAV not ready, keeping current track')
+        return
+      }
+
+      // 포그라운드: async 플로우 (useEffect가 loadAudioSource 실행)
+      console.log('[GlobalPlayer] Normal async flow for:', nextTrack.name || nextTrack.title)
       setTrack(nextTrack)
-      return
-    }
-
-    // 2순위: blob이 없는 경우 (백그라운드)
-    if (isBackground) {
-      // FLAC: WAV 프리컨버전 완료를 기다린 후 다시 시도
-      const bgNeedsFallback = needsWebAudioFallback(
-        nextTrack.mimeType ?? undefined,
-        (nextTrack.name || nextTrack.title) ?? undefined
-      )
-      if (bgNeedsFallback) {
-        // 1차: 프리컨버전 Promise가 진행 중이면 완료 대기 (최대 5초)
-        if (wavConvertPromiseRef.current) {
-          try {
-            await Promise.race([
-              wavConvertPromiseRef.current,
-              new Promise(resolve => setTimeout(resolve, 5000))
-            ])
-          } catch {} // 실패해도 계속
-        }
-        // 프리컨버전 완료 후 다시 체크
-        if (nextWavCacheRef.current?.trackId === nextTrack.id) {
-          const wavUrl = nextWavCacheRef.current.wavUrl
-          if (prevWavUrlRef.current) URL.revokeObjectURL(prevWavUrlRef.current)
-          prevWavUrlRef.current = wavUrl
-          nextWavCacheRef.current = null
-          if (audioRef.current) {
-            audioRef.current.srcObject = null
-            audioRef.current.loop = false
-            audioRef.current.removeAttribute('crossorigin')
-            audioRef.current.src = wavUrl
-            audioRef.current.volume = isMuted ? 0 : volume
-            audioRef.current.playbackRate = playbackRate
-            setCurrentTime(0)
-            setIsFallbackMode(false)
-            audioRef.current.play().catch(() => {})
-          }
-          skipNextLoadRef.current = true
-          setTrack(nextTrack)
-          return
-        }
-
-        // 2차: 캐시된 blob에서 즉석 WAV 변환 시도 (CPU만 사용, 네트워크 0)
-        const cachedBlobUrl = getCachedUrl(nextTrack.id)
-        if (cachedBlobUrl) {
-          try {
-            console.log('[GlobalPlayer] 🔄 BG: Inline FLAC→WAV from cached blob')
-            const ctx = getMediaAudioContext()
-            if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
-            const resp = await fetch(cachedBlobUrl)
-            const ab = await resp.arrayBuffer()
-            const decoded = await ctx.decodeAudioData(ab)
-            const wavBlob = audioBufferToWavBlob(decoded)
-            const wavUrl = URL.createObjectURL(wavBlob)
-
-            if (prevWavUrlRef.current) URL.revokeObjectURL(prevWavUrlRef.current)
-            prevWavUrlRef.current = wavUrl
-            if (audioRef.current) {
-              audioRef.current.srcObject = null
-              audioRef.current.loop = false
-              audioRef.current.removeAttribute('crossorigin')
-              audioRef.current.src = wavUrl
-              audioRef.current.volume = isMuted ? 0 : volume
-              audioRef.current.playbackRate = playbackRate
-              setCurrentTime(0)
-              setDuration(decoded.duration)
-              setIsFallbackMode(false)
-              await audioRef.current.play().catch(() => {})
-            }
-            skipNextLoadRef.current = true
-            setTrack(nextTrack)
-            return
-          } catch (e) {
-            console.warn('[GlobalPlayer] BG: Inline WAV conversion failed:', e)
-          }
-        }
-      }
-
-      // 모두 실패 → 현재 곡 유지
-      console.log('[GlobalPlayer] ❌ iOS bg: No playable source, keeping current track')
-      return
-    }
-
-    // 포그라운드: async 플로우 (useEffect가 loadAudioSource 실행)
-    console.log('[GlobalPlayer] Normal async flow for:', nextTrack.name || nextTrack.title)
-    setTrack(nextTrack)
     } catch (e) {
       console.error('[GlobalPlayer] handleNextWrapped error:', e)
     }
