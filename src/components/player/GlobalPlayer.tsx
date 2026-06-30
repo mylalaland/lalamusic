@@ -900,6 +900,14 @@ export default function GlobalPlayer() {
       }
     }
 
+    // 3순위: fallback 포맷(FLAC 등)인데 WAV 프리컨버전 미완료 시,
+    // nextAudioRef에 미리 버퍼링한 /api/stream URL 사용 (HTTP 캐시 히트)
+    // iOS Safari는 /api/stream URL로 FLAC을 직접 재생 가능 (blob URL은 불가하지만 HTTP는 가능)
+    if (needsFallback && nextStreamUrlRef.current?.trackId === nextTrack.id) {
+      console.log('[GlobalPlayer] 📡 Using pre-buffered /api/stream URL for fallback format')
+      return nextStreamUrlRef.current.url
+    }
+
     return null
   }
   const handlePrevWrapped = () => {
