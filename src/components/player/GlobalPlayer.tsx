@@ -52,6 +52,8 @@ export default function GlobalPlayer() {
   const nextWavCacheRef = useRef<{ trackId: string, wavUrl: string, duration: number } | null>(null)
   const skipNextLoadRef = useRef(false)
   const keepAliveRef = useRef<HTMLAudioElement>(null)
+  // FLAC 전용: /api/stream URL (WAV 프리컨버전 미완료 시 백그라운드 fallback)
+  const nextStreamUrlRef = useRef<{ trackId: string, url: string } | null>(null)
 
   
   const [currentTime, setCurrentTime] = useState(0)
@@ -629,12 +631,26 @@ export default function GlobalPlayer() {
       } else if (nextNeedsFallback) {
         // 이미 캐시된 FLAC → WAV 프리컨버전
         const cachedUrl = getCachedUrl(nextTrack.id)
-        if (cachedUrl && !nextWavCacheRef.current?.trackId) {
+        // [FIX] 이전 곡의 WAV가 남아있어도 새 곡이면 프리컨버전 실행
+        if (cachedUrl && nextWavCacheRef.current?.trackId !== nextTrack.id) {
           preconvertToWav(nextTrack.id, cachedUrl)
         }
       }
 
-
+      // FLAC 전용: /api/stream URL을 nextAudioRef에 미리 버퍼링
+      // WAV 프리컨버전이 미완료 시 백그라운드 fallback으로 사용
+      // MP3/M4A는 blob URL로 직접 재생되므로 프리버퍼링 불필요 (Vercel 트래픽 0)
+      if (nextNeedsFallback) {
+        const streamUrl = `/api/stream?id=${nextTrack.id}&name=${encodeURIComponent(nextTrack.name || '')}&mimeType=${encodeURIComponent(nextTrack.mimeType || '')}`
+        nextStreamUrlRef.current = { trackId: nextTrack.id, url: streamUrl }
+        if (nextAudioRef.current) {
+          nextAudioRef.current.preload = 'auto'
+          nextAudioRef.current.src = streamUrl
+          nextAudioRef.current.load()
+        }
+      } else {
+        nextStreamUrlRef.current = null
+      }
     }
 
     // 캐시 정리: prev + current + next만 유지
@@ -868,7 +884,11 @@ export default function GlobalPlayer() {
       }
     }
 
-
+    // 3순위: FLAC 등 fallback 포맷 — WAV 프리컨버전 미완료 시
+    // 미리 버퍼링된 /api/stream URL 사용 (HTTP 캐시 히트 → Vercel 트래픽 추가 0)
+    if (needsFallback && nextStreamUrlRef.current?.trackId === nextTrack.id) {
+      return nextStreamUrlRef.current.url
+    }
 
     return null
   }
