@@ -52,8 +52,7 @@ export default function GlobalPlayer() {
   const nextWavCacheRef = useRef<{ trackId: string, wavUrl: string, duration: number } | null>(null)
   const skipNextLoadRef = useRef(false)
   const keepAliveRef = useRef<HTMLAudioElement>(null)
-  // FLAC 전용: /api/stream URL (WAV 프리컨버전 미완료 시 백그라운드 fallback)
-  const nextStreamUrlRef = useRef<{ trackId: string, url: string } | null>(null)
+
 
   
   const [currentTime, setCurrentTime] = useState(0)
@@ -637,20 +636,6 @@ export default function GlobalPlayer() {
         }
       }
 
-      // FLAC 전용: /api/stream URL을 nextAudioRef에 미리 버퍼링
-      // WAV 프리컨버전이 미완료 시 백그라운드 fallback으로 사용
-      // MP3/M4A는 blob URL로 직접 재생되므로 프리버퍼링 불필요 (Vercel 트래픽 0)
-      if (nextNeedsFallback) {
-        const streamUrl = `/api/stream?id=${nextTrack.id}&name=${encodeURIComponent(nextTrack.name || '')}&mimeType=${encodeURIComponent(nextTrack.mimeType || '')}`
-        nextStreamUrlRef.current = { trackId: nextTrack.id, url: streamUrl }
-        if (nextAudioRef.current) {
-          nextAudioRef.current.preload = 'auto'
-          nextAudioRef.current.src = streamUrl
-          nextAudioRef.current.load()
-        }
-      } else {
-        nextStreamUrlRef.current = null
-      }
     }
 
     // 캐시 정리: prev + current + next만 유지
@@ -749,7 +734,7 @@ export default function GlobalPlayer() {
     setIsSeeking(false)
   }
 
-  const handleNextWrapped = () => {
+  const handleNextWrapped = async () => {
     try {
     if (!track) return
     // [FIX] iOS: keep-alive가 재생 중인지 확인하고, 아니면 시작
@@ -841,14 +826,57 @@ export default function GlobalPlayer() {
       return
     }
 
-    // 2순위: blob이 없는 경우
+    // 2순위: blob이 없는 경우 (백그라운드)
     if (isBackground) {
+      // FLAC: WAV 프리컨버전이 아직 안 됐지만 blob은 캐시되어 있을 수 있음
+      // 캐시된 FLAC blob에서 즉석 WAV 변환 시도 (메모리에서 fetch → CPU decode → 네트워크 0)
+      const bgNeedsFallback = needsWebAudioFallback(
+        nextTrack.mimeType ?? undefined,
+        (nextTrack.name || nextTrack.title) ?? undefined
+      )
+      if (bgNeedsFallback) {
+        const cachedBlobUrl = getCachedUrl(nextTrack.id)
+        if (cachedBlobUrl) {
+          try {
+            console.log('[GlobalPlayer] 🔄 BG: Inline FLAC→WAV conversion from cached blob')
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+            const tempCtx = new AudioCtx()
+            const resp = await fetch(cachedBlobUrl)
+            const ab = await resp.arrayBuffer()
+            const decoded = await tempCtx.decodeAudioData(ab)
+            const wavBlob = audioBufferToWavBlob(decoded)
+            const wavUrl = URL.createObjectURL(wavBlob)
+            tempCtx.close().catch(() => {})
 
-      // [FIX] 백그라운드에서 blob이 없으면 트랙을 변경하지 않음!
-      // setTrack() 호출하면 cleanup에서 audioRef.pause() + src=SILENT_WAV 실행되어
-      // 현재 재생 중인 곡까지 죽어버림.
-      // 대신 현재 곡을 계속 재생하고, 포그라운드 복귀 시 사용자가 다시 next 누르도록 함.
-      console.log('[GlobalPlayer] ❌ iOS bg: No cached blob, keeping current track playing')
+            // WAV 재생
+            if (prevWavUrlRef.current) URL.revokeObjectURL(prevWavUrlRef.current)
+            prevWavUrlRef.current = wavUrl
+
+            if (audioRef.current) {
+              audioRef.current.srcObject = null
+              audioRef.current.loop = false
+              audioRef.current.removeAttribute('crossorigin')
+              audioRef.current.src = wavUrl
+              audioRef.current.volume = isMuted ? 0 : volume
+              audioRef.current.playbackRate = playbackRate
+              setCurrentTime(0)
+              setDuration(decoded.duration)
+              setIsFallbackMode(false)
+              await audioRef.current.play().catch(() => {})
+            }
+
+            skipNextLoadRef.current = true
+            setTrack(nextTrack)
+            console.log('[GlobalPlayer] ✅ BG: Inline WAV conversion success')
+            return
+          } catch (e) {
+            console.warn('[GlobalPlayer] BG: Inline WAV conversion failed:', e)
+          }
+        }
+      }
+
+      // blob도 없거나 변환 실패 → 현재 곡 유지
+      console.log('[GlobalPlayer] ❌ iOS bg: No playable source, keeping current track')
       return
     }
 
@@ -884,11 +912,6 @@ export default function GlobalPlayer() {
       }
     }
 
-    // 3순위: FLAC 등 fallback 포맷 — WAV 프리컨버전 미완료 시
-    // 미리 버퍼링된 /api/stream URL 사용 (HTTP 캐시 히트 → Vercel 트래픽 추가 0)
-    if (needsFallback && nextStreamUrlRef.current?.trackId === nextTrack.id) {
-      return nextStreamUrlRef.current.url
-    }
 
     return null
   }
