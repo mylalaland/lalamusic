@@ -37,7 +37,6 @@ export default function GlobalPlayer() {
   } = usePlayerStore()
 
   const audioRef = useRef<HTMLAudioElement>(null)
-  const nextAudioRef = useRef<HTMLAudioElement>(null)  // [FIX] iOS: 다음 곡 WAV를 미리 로드하는 두 번째 audio 엘리먼트
   const activeTrackRef = useRef<HTMLDivElement>(null)
   const activeLyricRef = useRef<HTMLParagraphElement>(null)
   const seekTimeRef = useRef<number>(0)
@@ -51,7 +50,6 @@ export default function GlobalPlayer() {
   const fallbackPlayerRef = useRef<WebAudioFallbackPlayer | null>(null)
   const nextWavCacheRef = useRef<{ trackId: string, wavUrl: string, duration: number } | null>(null)
   const skipNextLoadRef = useRef(false)
-  const keepAliveRef = useRef<HTMLAudioElement>(null)
   const wavConvertPromiseRef = useRef<Promise<void> | null>(null)
   const preconvertingTrackRef = useRef<string | null>(null)
   const [debugLog, setDebugLog] = useState('')
@@ -118,8 +116,6 @@ export default function GlobalPlayer() {
     if (fallbackPlayerRef.current?.audioContext?.state === 'suspended') {
       fallbackPlayerRef.current.audioContext.resume().catch(() => {})
     }
-    // [FIX] iOS keep-alive: 첫 재생 시 keep-alive 오디오 시작 (user gesture 필요)
-    startKeepAlive()
     togglePlay()
   }
 
@@ -145,17 +141,7 @@ export default function GlobalPlayer() {
   // 1-sample silent WAV (forces iOS audio session to "playback" mode)
   const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
 
-  // [NEW] iOS keep-alive: 무음 오디오를 loop로 지속 재생하여 iOS가 media session을 해제하지 않도록 함
-  // iOS는 <audio>가 재생 중이 아니면 즉시 페이지를 suspend하고 Spotify 등 다른 앱에 세션을 넘김
-  const startKeepAlive = () => {
-    if (!keepAliveRef.current) return
-    if (!keepAliveRef.current.paused) return  // 이미 재생 중
-    keepAliveRef.current.src = SILENT_WAV
-    keepAliveRef.current.loop = true
-    keepAliveRef.current.volume = 0.01  // 거의 무음이지만 0이 아님 (iOS 최적화 방지)
-    keepAliveRef.current.play().catch(() => {})
-    console.log('[GlobalPlayer] Keep-alive audio started')
-  }
+
 
   // FLAC/OGG/OPUS 재생 (iOS Safari): FLAC 디코딩 → WAV 변환 → <audio> 태그로 재생
   // Web Audio API 출력은 iOS "ambient" 세션이라 소리가 안 남.
@@ -254,11 +240,7 @@ export default function GlobalPlayer() {
         nextWavCacheRef.current = { trackId, wavUrl, duration: audioBuffer.duration }
         console.log('[GlobalPlayer] WAV preconvert done:', trackId.slice(0, 8), 'dur=' + audioBuffer.duration.toFixed(0) + 's')
 
-        // iOS: nextAudioRef pre-load
-        if (nextAudioRef.current) {
-          nextAudioRef.current.src = wavUrl
-          nextAudioRef.current.load()
-        }
+
       } catch (e) {
         console.warn('[GlobalPlayer] WAV preconvert failed:', e)
       } finally {
@@ -280,17 +262,14 @@ export default function GlobalPlayer() {
       if (unlocked) return
       unlocked = true
       
-      // iOS: src 없는 <audio>의 play()는 unlock이 안 됨. 무음 WAV를 src로 설정
+      // [FIX] iOS: play()만 호출하고 pause() 절대 안 함!
+      // play()->pause() 시퀀스가 iOS audio session을 죽이는 원인이었음
       if (audioRef.current) {
         if (!audioRef.current.src || audioRef.current.src === '' || audioRef.current.src === window.location.href) {
           audioRef.current.src = SILENT_WAV
         }
-        const silentPlay = audioRef.current.play()
-        silentPlay?.then(() => audioRef.current?.pause()).catch(() => {})
+        audioRef.current.play().catch(() => {})
       }
-      
-      // [FIX] iOS keep-alive 오디오도 user gesture에서 unlock
-      startKeepAlive()
       
       unlockAllAudioContexts().catch(() => {})
       
@@ -302,11 +281,6 @@ export default function GlobalPlayer() {
     return () => {
       document.removeEventListener('touchstart', unlockAudio)
       document.removeEventListener('click', unlockAudio)
-      // 컴포넌트 unmount 시 keep-alive 정리
-      if (keepAliveRef.current) {
-        keepAliveRef.current.pause()
-        keepAliveRef.current.src = ''
-      }
     }
   }, [])
 
@@ -698,9 +672,7 @@ export default function GlobalPlayer() {
     if (!audioRef.current) return
     if (isPlaying) {
       unlockAllAudioContexts().catch(() => {})
-      if (audioRef.current.readyState >= 2) {
-        audioRef.current.play().catch((e) => console.warn('Play state sync blocked:', e))
-      }
+      audioRef.current.play().catch((e) => console.warn('Play state sync blocked:', e))
     } else {
       audioRef.current.pause()
     }
@@ -778,7 +750,7 @@ export default function GlobalPlayer() {
   const handleNextWrapped = () => {
     try {
       if (!track) { dbg('next: no track'); return }
-      startKeepAlive()
+
 
       if (repeatMode === 'one') {
         if (isFallbackMode && fallbackPlayerRef.current) {
@@ -1061,20 +1033,7 @@ export default function GlobalPlayer() {
   // ============================================================
   return (
     <>
-      {/* [FIX] iOS keep-alive: 무음 오디오 loop로 media session 유지 */}
-      <audio 
-        ref={keepAliveRef} 
-        playsInline 
-        loop 
-        style={{ display: 'none' }}
-      />
-      {/* [FIX] iOS: 다음 곡 WAV를 미리 로드하는 두 번째 audio 엘리먼트 */}
-      <audio 
-        ref={nextAudioRef}
-        preload="auto"
-        playsInline
-        style={{ display: 'none' }}
-      />
+
       <audio 
         ref={audioRef} preload="auto" playsInline 
         onTimeUpdate={handleTimeUpdate} 
