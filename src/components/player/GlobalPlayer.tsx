@@ -7,7 +7,7 @@ import { getExternalLyrics } from '@/app/actions/lyrics'
 import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
 import { WebAudioFallbackPlayer, needsWebAudioFallback, audioBufferToWavBlob } from '@/lib/audio/webAudioFallback'
-import { unlockAllAudioContexts, getFallbackAudioContext } from '@/lib/audio/sharedAudioCtx'
+import { unlockAllAudioContexts, getMediaAudioContext, getFallbackAudioContext } from '@/lib/audio/sharedAudioCtx'
 import { preloadTrack, getCachedUrl, releaseAllExcept, isCached } from '@/lib/audio/audioPreloader'
 import { 
   Play, Pause, SkipBack, SkipForward, ChevronDown, ListMusic, MoreHorizontal,
@@ -154,8 +154,9 @@ export default function GlobalPlayer() {
 
     try {
       // Step 1: FLAC blob을 다운로드하고 AudioBuffer로 디코딩
-      // [FIX] iOS AudioContext 생성 제한(~4개) 방지: 싱글톤 사용
-      const tempCtx = getFallbackAudioContext()
+      // [FIX] mediaCtx 사용 (현재 곡 디코딩용) — preconvertToWav는 fallbackCtx 사용
+      // 동일 AudioContext에서 동시 decodeAudioData 호출 시 iOS에서 실패하므로 분리
+      const tempCtx = getMediaAudioContext()
       if (tempCtx.state === 'suspended') await tempCtx.resume().catch(() => {})
       const response = await fetch(url)
       if (!response.ok) throw new Error(`fetch failed: ${response.status}`)
@@ -553,7 +554,7 @@ export default function GlobalPlayer() {
         // decodeAudioData로 디코딩 → WAV로 변환 → <audio> 태그로 재생
         const useFallback = needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)
         if (useFallback) {
-          startFallbackPlayback(newSrc)
+          startFallbackPlayback(newSrc, thisTrackId)
           return
         }
 
@@ -876,7 +877,7 @@ export default function GlobalPlayer() {
         if (cachedBlobUrl) {
           try {
             console.log('[GlobalPlayer] 🔄 BG: Inline FLAC→WAV from cached blob')
-            const ctx = getFallbackAudioContext()
+            const ctx = getMediaAudioContext()
             if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
             const resp = await fetch(cachedBlobUrl)
             const ab = await resp.arrayBuffer()
