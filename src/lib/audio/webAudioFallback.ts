@@ -286,11 +286,10 @@ export function needsWebAudioFallback(mimeType?: string, fileName?: string): boo
   const lower = (fileName || '').toLowerCase()
   const mime = (mimeType || '').toLowerCase()
   
-  // [FIX] FLAC: iOS Safari 11+ (2017~) 부터 <audio> 태그로 FLAC 직접 재생 가능.
-  // blob URL도 정상 작동. WebAudio 폴백 불필요.
-  // 이전에 FLAC을 true로 반환하면 getImmediatePlayUrl이 blob URL을 반환 안 해서
-  // iOS 백그라운드 재생이 완전히 실패했음.
-
+  // FLAC: iOS Safari <audio> tag CANNOT play FLAC from blob URLs.
+  // WebAudio decodeAudioData로 디코딩 → WAV로 변환 → <audio> 태그로 재생.
+  // 백그라운드 전환 시에는 미리 변환된 WAV blob URL을 사용 (getImmediatePlayUrl 1순위).
+  if (lower.endsWith('.flac') || mime.includes('flac')) return true
   // OGG/Vorbis: not supported on Safari at all via <audio>
   if (lower.endsWith('.ogg') || mime.includes('ogg')) return true
   // OPUS: not supported on Safari <audio>
