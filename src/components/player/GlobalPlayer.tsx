@@ -231,15 +231,35 @@ export default function GlobalPlayer() {
         const wavUrl = URL.createObjectURL(wavBlob)
 
         nextWavCacheRef.current = { trackId, wavUrl, duration: audioBuffer.duration }
-        console.log('[GlobalPlayer] ✅ WAV preconvert done:', trackId.slice(0, 8))
+        console.log('[GlobalPlayer] WAV preconvert done:', trackId.slice(0, 8))
 
-        // iOS: nextAudioRef에 미리 로드 (전환 시 파싱 지연 방지)
+        // [DEBUG] lock screen debug
+        try {
+          if (navigator.mediaSession) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: 'WAV_OK: ' + trackId.slice(0, 6),
+              artist: 'dur=' + audioBuffer.duration.toFixed(0) + 's',
+              album: 'Lala Music'
+            })
+          }
+        } catch {}
+
+        // iOS: nextAudioRef pre-load
         if (nextAudioRef.current) {
           nextAudioRef.current.src = wavUrl
           nextAudioRef.current.load()
         }
       } catch (e) {
-        console.warn('[GlobalPlayer] ❌ WAV preconvert failed:', e)
+        console.warn('[GlobalPlayer] WAV preconvert failed:', e)
+        try {
+          if (navigator.mediaSession) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: 'WAV_FAIL: ' + String(e).slice(0, 30),
+              artist: trackId.slice(0, 8),
+              album: 'Lala Music'
+            })
+          }
+        } catch {}
       } finally {
         if (preconvertingTrackRef.current === trackId) {
           preconvertingTrackRef.current = null
@@ -790,6 +810,22 @@ export default function GlobalPlayer() {
 
       // 1순위: 프리로드된 blob/WAV URL (동기적, 네트워크 0)
       const immediateUrl = getImmediatePlayUrl(nextTrack)
+
+      // [DEBUG] lock screen debug - handleNext state
+      const _wavId = nextWavCacheRef.current?.trackId?.slice(0, 6) || 'none'
+      const _nxtId = nextTrack.id.slice(0, 6)
+      const _hasBlob = !!getCachedUrl(nextTrack.id)
+      const _nf = needsWebAudioFallback(nextTrack.mimeType ?? undefined, (nextTrack.name || nextTrack.title) ?? undefined)
+      const _hasUrl = !!immediateUrl
+      try {
+        if (navigator.mediaSession) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: 'NEXT bg=' + isBackground + ' url=' + _hasUrl,
+            artist: 'wav=' + _wavId + ' nxt=' + _nxtId,
+            album: 'blob=' + _hasBlob + ' fb=' + _nf
+          })
+        }
+      } catch {}
 
       if (immediateUrl && audioRef.current) {
         console.log('[GlobalPlayer] ⚡ Immediate src swap for:', nextTrack.name || nextTrack.title)
