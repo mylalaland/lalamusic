@@ -53,7 +53,29 @@ export default function GlobalPlayer() {
   const skipNextLoadRef = useRef(false)
   const keepAliveRef = useRef<HTMLAudioElement>(null)
   const wavConvertPromiseRef = useRef<Promise<void> | null>(null)
-  const preconvertingTrackRef = useRef<string | null>(null)  // 동시 preconvert 방지
+  const preconvertingTrackRef = useRef<string | null>(null)
+  const [debugLog, setDebugLog] = useState('')
+
+  // [DEBUG] localStorage debug logger - visible when returning to foreground
+  const dbg = (msg: string) => {
+    try {
+      const ts = new Date().toLocaleTimeString('ko-KR', { hour12: false }).slice(0, 8)
+      const entry = ts + ' ' + msg
+      const logs = JSON.parse(localStorage.getItem('_pdbg') || '[]') as string[]
+      logs.push(entry)
+      if (logs.length > 15) logs.shift()
+      localStorage.setItem('_pdbg', JSON.stringify(logs))
+      setDebugLog(logs.join('\n'))
+      console.log('[DBG]', msg)
+    } catch {}
+  }
+  // Load debug log on mount
+  useEffect(() => {
+    try {
+      const logs = JSON.parse(localStorage.getItem('_pdbg') || '[]') as string[]
+      setDebugLog(logs.join('\n'))
+    } catch {}
+  }, [])
 
 
   
@@ -636,12 +658,13 @@ export default function GlobalPlayer() {
           fileName: nextTrack.name || nextTrack.title || ''
         })
           .then((blobUrl) => {
+            dbg('preload OK: ' + (nextTrack!.name || nextTrack!.title || '').slice(0, 20))
             // [NEW] iOS: FLAC/OGG/OPUS면 WAV로 미리 변환
             if (nextNeedsFallback) {
               preconvertToWav(nextTrack!.id, blobUrl)
             }
           })
-          .catch(() => {})
+          .catch((e) => { dbg('preload FAIL: ' + String(e).slice(0, 30)) })
       } else if (nextNeedsFallback) {
         // 이미 캐시된 FLAC → WAV 프리컨버전
         const cachedUrl = getCachedUrl(nextTrack.id)
@@ -754,7 +777,7 @@ export default function GlobalPlayer() {
   // 모든 async 작업(WAV 변환)은 포그라운드에서 미리 완료되어야 함.
   const handleNextWrapped = () => {
     try {
-      if (!track) return
+      if (!track) { dbg('next: no track'); return }
       startKeepAlive()
 
       if (repeatMode === 'one') {
@@ -765,10 +788,10 @@ export default function GlobalPlayer() {
           audioRef.current.currentTime = 0
           audioRef.current.play().catch(() => {})
         }
+        dbg('next: repeat one')
         return
       }
 
-      // 다음 트랙 결정
       let nextTrack: MusicFile | null = null
       if (isShuffle && playlist.length > 0) {
         nextTrack = playlist[Math.floor(Math.random() * playlist.length)]
@@ -777,23 +800,23 @@ export default function GlobalPlayer() {
         const isLast = currentIndex === playlist.length - 1
         if (isLast) {
           if (repeatMode === 'all') nextTrack = playlist[0]
-          else { if (isPlaying) togglePlay(); return }
+          else { if (isPlaying) togglePlay(); dbg('next: end of list'); return }
         } else {
           nextTrack = playlist[currentIndex + 1]
         }
       }
 
-      if (!nextTrack) return
+      if (!nextTrack) { dbg('next: no nextTrack'); return }
 
       const isBackground = typeof document !== 'undefined' && document.hidden
-
-      // 1순위: 프리로드된 blob/WAV URL (동기적, 네트워크 0)
       const immediateUrl = getImmediatePlayUrl(nextTrack)
+      const cached = isCached(nextTrack.id)
+      const wavReady = nextWavCacheRef.current?.trackId === nextTrack.id
 
-      console.log('[GlobalPlayer] handleNext: bg=' + isBackground, 'url=' + !!immediateUrl, 'wavCache=' + (nextWavCacheRef.current?.trackId?.slice(0,6) || 'none'), 'nxt=' + nextTrack.id.slice(0,6))
+      dbg('next: bg=' + isBackground + ' url=' + !!immediateUrl + ' cached=' + cached + ' wav=' + wavReady + ' nxt=' + (nextTrack.name || nextTrack.title || '').slice(0, 20))
 
       if (immediateUrl && audioRef.current) {
-        console.log('[GlobalPlayer] ⚡ Immediate src swap for:', nextTrack.name || nextTrack.title)
+        dbg('next: SWAP ' + (nextTrack.name || '').slice(0, 20))
 
         if (prevWavUrlRef.current) URL.revokeObjectURL(prevWavUrlRef.current)
         if (nextWavCacheRef.current?.trackId === nextTrack.id) {
@@ -815,7 +838,8 @@ export default function GlobalPlayer() {
 
         const playPromise = audioRef.current.play()
         if (playPromise) {
-          playPromise.then(() => {}).catch(() => {
+          playPromise.then(() => { dbg('next: play OK') }).catch((e) => {
+            dbg('next: play fail ' + String(e).slice(0, 30))
             const h = () => {
               audioRef.current?.play().catch(() => {})
               audioRef.current?.removeEventListener('canplay', h)
@@ -829,19 +853,11 @@ export default function GlobalPlayer() {
         return
       }
 
-      // 2순위: immediate URL 없음
-      if (isBackground) {
-        // [CRITICAL] 백그라운드에서는 await 절대 불가 — iOS가 JS 죽임
-        // WAV가 준비 안 됐으면 현재 곡 유지 (최후 안전장치)
-        console.log('[GlobalPlayer] ❌ iOS bg: WAV not ready, keeping current track')
-        return
-      }
-
-      // 포그라운드: async 플로우 (useEffect가 loadAudioSource 실행)
-      console.log('[GlobalPlayer] Normal async flow for:', nextTrack.name || nextTrack.title)
+      // immediate URL 없음: 백그라운드든 포그라운드든 setTrack 시도
+      dbg('next: no immediate, trying setTrack')
       setTrack(nextTrack)
     } catch (e) {
-      console.error('[GlobalPlayer] handleNextWrapped error:', e)
+      dbg('next: ERROR ' + String(e).slice(0, 40))
     }
   }
 
@@ -971,7 +987,7 @@ export default function GlobalPlayer() {
       navigator.mediaSession.setActionHandler('play', () => handleToggleRef.current())
       navigator.mediaSession.setActionHandler('pause', () => handleToggleRef.current())
       navigator.mediaSession.setActionHandler('previoustrack', () => handlePrevRef.current())
-      navigator.mediaSession.setActionHandler('nexttrack', () => handleNextRef.current())
+      navigator.mediaSession.setActionHandler('nexttrack', () => { dbg('MS:next fired'); handleNextRef.current() })
       navigator.mediaSession.setActionHandler('seekto', (details) => {
         if (details.seekTime !== undefined && audioRef.current) {
           audioRef.current.currentTime = details.seekTime
@@ -1063,7 +1079,7 @@ export default function GlobalPlayer() {
         ref={audioRef} preload="auto" playsInline 
         onTimeUpdate={handleTimeUpdate} 
         onLoadedMetadata={handleLoadedMetadata} 
-        onEnded={() => handleNextRef.current()}
+        onEnded={() => { dbg('audio:ended'); handleNextRef.current() }}
         onError={handleAudioError}
         onProgress={handleProgress}
       />
@@ -1092,6 +1108,10 @@ export default function GlobalPlayer() {
             <div className="flex-1 min-w-0">
               <p className="font-['Noto_Serif'] font-bold text-[15px] text-[var(--text-main)] truncate tracking-tight">{displayTitle}</p>
               <p className="font-['Work_Sans'] text-[11px] text-[var(--text-muted)] truncate font-medium">{track.artist || 'Unknown Artist'}</p>
+              {/* [DEBUG] bg playback log */}
+              {debugLog && (
+                <pre className="text-[8px] text-[var(--text-muted)] opacity-60 truncate" onClick={(e) => { e.stopPropagation(); setDebugLog(''); localStorage.removeItem('_pdbg'); }}>DBG: {debugLog.split('\n').pop()}</pre>
+              )}
             </div>
             {/* 컨트롤 */}
             <div className="flex items-center gap-2 pr-1">
