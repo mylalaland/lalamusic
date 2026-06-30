@@ -8,7 +8,7 @@ import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
 import { WebAudioFallbackPlayer, needsWebAudioFallback, audioBufferToWavBlob } from '@/lib/audio/webAudioFallback'
 import { unlockAllAudioContexts } from '@/lib/audio/sharedAudioCtx'
-import { preloadTrack, getCachedUrl, releaseAllExcept, isCached, isLoading } from '@/lib/audio/audioPreloader'
+import { preloadTrack, getCachedUrl, releaseAllExcept, isCached } from '@/lib/audio/audioPreloader'
 import { 
   Play, Pause, SkipBack, SkipForward, ChevronDown, ListMusic, MoreHorizontal,
   Shuffle, Volume2, VolumeX, Mic2, Gauge, Repeat, Repeat1, Music, Moon, Settings2, Bookmark, Plus, Check
@@ -52,10 +52,7 @@ export default function GlobalPlayer() {
   const nextWavCacheRef = useRef<{ trackId: string, wavUrl: string, duration: number } | null>(null)
   const skipNextLoadRef = useRef(false)
   const keepAliveRef = useRef<HTMLAudioElement>(null)
-  // [FIX] iOS 잠금화면: /api/stream URL을 nextAudioRef에 미리 버퍼링
-  // 포그라운드에서 pre-buffer → 브라우저 HTTP 캐시에 저장
-  // 백그라운드에서 같은 URL 사용 → 캐시 히트 (Vercel 트래픽 추가 0)
-  const nextStreamUrlRef = useRef<{ trackId: string, url: string } | null>(null)
+
   
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -637,20 +634,7 @@ export default function GlobalPlayer() {
         }
       }
 
-      // [FIX] iOS 잠금화면: /api/stream URL을 nextAudioRef에 미리 버퍼링
-      // /api/stream은 Cache-Control: public, max-age=3600 설정되어 있으므로
-      // 포그라운드에서 한 번 로드하면 브라우저 HTTP 캐시에 저장됨.
-      // 백그라운드에서 같은 URL을 audioRef에 설정하면 캐시 히트 → Vercel 트래픽 추가 0
-      const streamUrl = `/api/stream?id=${nextTrack.id}&name=${encodeURIComponent(nextTrack.name || '')}&mimeType=${encodeURIComponent(nextTrack.mimeType || '')}`
-      nextStreamUrlRef.current = { trackId: nextTrack.id, url: streamUrl }
-      
-      // nextAudioRef에 미리 로드하여 브라우저 HTTP 캐시에 저장
-      if (nextAudioRef.current) {
-        nextAudioRef.current.preload = 'auto'
-        nextAudioRef.current.src = streamUrl
-        nextAudioRef.current.load()
-        console.log('[GlobalPlayer] 📡 Pre-buffering next track via /api/stream for iOS bg')
-      }
+
     }
 
     // 캐시 정리: prev + current + next만 유지
@@ -789,31 +773,15 @@ export default function GlobalPlayer() {
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
     const isBackground = typeof document !== 'undefined' && document.hidden
 
-    // DEBUG: 잠금화면에서 보이는 디버그 마커
-    const debugMeta = (step: string) => {
-      if (navigator.mediaSession) {
-        const title = nextTrack?.title || nextTrack?.name?.replace(/\.(mp3|wav|flac|m4a)$/i, '') || 'Unknown'
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title, artist: step, album: 'Lala Music DEBUG',
-        })
-      }
-    }
-    if (isBackground) debugMeta('[1] BG-NEXT')
+
 
     // 1순위: 프리로드된 blob URL 사용 (메모리에서 즉시 로드 — 네트워크 요청 없음!)
     const immediateUrl = getImmediatePlayUrl(nextTrack)
     
-    // ======== 상세 디버그: 왜 blob이 없는지 추적 ========
-    if (isBackground && !immediateUrl) {
-      const cached = getCachedUrl(nextTrack.id)
-      const loading = isLoading(nextTrack.id)
-      const fallback = needsWebAudioFallback(nextTrack.mimeType ?? undefined, (nextTrack.name || nextTrack.title) ?? undefined)
-      const wavReady = nextWavCacheRef.current?.trackId === nextTrack.id
-      debugMeta(`[DBG] cache=${cached ? 'Y' : 'N'} load=${loading ? 'Y' : 'N'} fb=${fallback ? 'Y' : 'N'} wav=${wavReady ? 'Y' : 'N'} id=${nextTrack.id.slice(0, 8)}`)
-    }
+
 
     if (immediateUrl && audioRef.current) {
-      if (isBackground) debugMeta(`[2] blob OK`)
+
       console.log('[GlobalPlayer] ⚡ Immediate blob src swap for:', nextTrack.name || nextTrack.title)
 
       if (prevWavUrlRef.current) {
@@ -836,14 +804,14 @@ export default function GlobalPlayer() {
       setCurrentTime(0)
       setIsFallbackMode(false)
 
-      if (isBackground) debugMeta(`[3] src set, readyState=${audioRef.current.readyState}`)
+
 
       const playPromise = audioRef.current.play()
       if (playPromise) {
         playPromise
-          .then(() => { if (isBackground) debugMeta('[4] play() OK — blob') })
+          .then(() => {})
           .catch(() => {
-            if (isBackground) debugMeta('[4] play() FAIL — retry on canplay')
+
             const h = () => {
               audioRef.current?.play().catch(() => {})
               audioRef.current?.removeEventListener('canplay', h)
@@ -859,7 +827,7 @@ export default function GlobalPlayer() {
 
     // 2순위: blob이 없는 경우
     if (isBackground) {
-      debugMeta('[X] No blob — keeping current song')
+
       // [FIX] 백그라운드에서 blob이 없으면 트랙을 변경하지 않음!
       // setTrack() 호출하면 cleanup에서 audioRef.pause() + src=SILENT_WAV 실행되어
       // 현재 재생 중인 곡까지 죽어버림.
@@ -900,13 +868,7 @@ export default function GlobalPlayer() {
       }
     }
 
-    // 3순위: fallback 포맷(FLAC 등)인데 WAV 프리컨버전 미완료 시,
-    // nextAudioRef에 미리 버퍼링한 /api/stream URL 사용 (HTTP 캐시 히트)
-    // iOS Safari는 /api/stream URL로 FLAC을 직접 재생 가능 (blob URL은 불가하지만 HTTP는 가능)
-    if (needsFallback && nextStreamUrlRef.current?.trackId === nextTrack.id) {
-      console.log('[GlobalPlayer] 📡 Using pre-buffered /api/stream URL for fallback format')
-      return nextStreamUrlRef.current.url
-    }
+
 
     return null
   }
