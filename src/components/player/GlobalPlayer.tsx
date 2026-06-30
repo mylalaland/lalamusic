@@ -105,20 +105,14 @@ export default function GlobalPlayer() {
   useEffect(() => { isPlayingRef.current = isPlaying }, [isPlaying])
 
   // WebAudioFallbackPlayer 정리
+  // [CRITICAL] audioRef는 절대 건드리지 않음!
+  // pause() + SILENT_WAV가 iOS audio session을 죽이는 근본 원인이었음.
+  // audioRef.src는 새 소스 설정 시 자동으로 교체됨.
   const cleanupFallback = () => {
     if (fallbackPlayerRef.current) {
       fallbackPlayerRef.current.destroy()
       fallbackPlayerRef.current = null
     }
-    // <audio> 정리 — iOS media session 유지를 위해 src를 비우지 않고 무음 WAV로 교체
-    // src = '' 로 비우면 iOS가 media session 소유권을 즉시 포기하고 다른 앱에 넘겨버림
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.srcObject = null
-      audioRef.current.loop = false
-      audioRef.current.src = SILENT_WAV  // [FIX] iOS media session 유지
-    }
-    // 이전 WAV blob URL 해제 (메모리 누수 방지)
     if (prevWavUrlRef.current) {
       URL.revokeObjectURL(prevWavUrlRef.current)
       prevWavUrlRef.current = null
@@ -148,7 +142,12 @@ export default function GlobalPlayer() {
   // [FIX] targetTrackId 파라미터 추가: 이전에는 track?.id (클로저)를 사용하여
   // 곡 전환 시 새 트랙의 ID와 불일치하여 재생이 skip되는 버그가 있었음.
   const startFallbackPlayback = async (url: string, targetTrackId?: string) => {
-    cleanupFallback()
+    // [FIX] cleanupFallback 대신 fallback player만 직접 정리
+    // audioRef는 건드리지 않음 — 새 WAV가 준비되면 src 교체로 자동 전환
+    if (fallbackPlayerRef.current) {
+      fallbackPlayerRef.current.destroy()
+      fallbackPlayerRef.current = null
+    }
 
     // targetTrackId가 주어지면 그것을 사용, 아니면 현재 track의 id
     const expectedTrackId = targetTrackId || track?.id
@@ -231,18 +230,7 @@ export default function GlobalPlayer() {
         const wavUrl = URL.createObjectURL(wavBlob)
 
         nextWavCacheRef.current = { trackId, wavUrl, duration: audioBuffer.duration }
-        console.log('[GlobalPlayer] WAV preconvert done:', trackId.slice(0, 8))
-
-        // [DEBUG] lock screen debug
-        try {
-          if (navigator.mediaSession) {
-            navigator.mediaSession.metadata = new MediaMetadata({
-              title: 'WAV_OK: ' + trackId.slice(0, 6),
-              artist: 'dur=' + audioBuffer.duration.toFixed(0) + 's',
-              album: 'Lala Music'
-            })
-          }
-        } catch {}
+        console.log('[GlobalPlayer] WAV preconvert done:', trackId.slice(0, 8), 'dur=' + audioBuffer.duration.toFixed(0) + 's')
 
         // iOS: nextAudioRef pre-load
         if (nextAudioRef.current) {
@@ -251,15 +239,6 @@ export default function GlobalPlayer() {
         }
       } catch (e) {
         console.warn('[GlobalPlayer] WAV preconvert failed:', e)
-        try {
-          if (navigator.mediaSession) {
-            navigator.mediaSession.metadata = new MediaMetadata({
-              title: 'WAV_FAIL: ' + String(e).slice(0, 30),
-              artist: trackId.slice(0, 8),
-              album: 'Lala Music'
-            })
-          }
-        } catch {}
       } finally {
         if (preconvertingTrackRef.current === trackId) {
           preconvertingTrackRef.current = null
@@ -532,9 +511,10 @@ export default function GlobalPlayer() {
       setLoadProgress(null)
       console.log('[GlobalPlayer] Skipping audio load — already playing via immediate swap')
     } else {
-      // [FIX] iOS media session 유지: src를 비우지 않고 무음 WAV로 교체
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = SILENT_WAV; }
-      cleanupFallback()
+      // [CRITICAL] audioRef.pause()/SILENT_WAV 하지 않음!
+      // iOS가 audio session을 죽여서 백그라운드 재생이 안 됨.
+      // 새 src 설정 시 자동으로 이전 오디오가 교체됨.
+      cleanupFallback()  // fallback player만 정리, audioRef 미접촉
 
       // [NEW] 오디오 소스 로딩 — src 설정만, 재생은 isPlaying useEffect가 담당
       const loadAudioSource = async () => {
@@ -615,10 +595,9 @@ export default function GlobalPlayer() {
 
     return () => {
       if (metaTimerRef.current) { clearTimeout(metaTimerRef.current); metaTimerRef.current = null }
-      // [FIX] iOS: skipNextLoad가 true면 다음 곡이 이미 재생 중이므로 pause 하지 않음
+      // [CRITICAL] audioRef.pause()/SILENT_WAV 하지 않음 — iOS audio session 보호
       if (!skipNextLoadRef.current) {
-        if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = SILENT_WAV; }
-        cleanupFallback()
+        cleanupFallback()  // fallback player만 정리
       }
     }
   }, [track?.id])
@@ -811,21 +790,7 @@ export default function GlobalPlayer() {
       // 1순위: 프리로드된 blob/WAV URL (동기적, 네트워크 0)
       const immediateUrl = getImmediatePlayUrl(nextTrack)
 
-      // [DEBUG] lock screen debug - handleNext state
-      const _wavId = nextWavCacheRef.current?.trackId?.slice(0, 6) || 'none'
-      const _nxtId = nextTrack.id.slice(0, 6)
-      const _hasBlob = !!getCachedUrl(nextTrack.id)
-      const _nf = needsWebAudioFallback(nextTrack.mimeType ?? undefined, (nextTrack.name || nextTrack.title) ?? undefined)
-      const _hasUrl = !!immediateUrl
-      try {
-        if (navigator.mediaSession) {
-          navigator.mediaSession.metadata = new MediaMetadata({
-            title: 'NEXT bg=' + isBackground + ' url=' + _hasUrl,
-            artist: 'wav=' + _wavId + ' nxt=' + _nxtId,
-            album: 'blob=' + _hasBlob + ' fb=' + _nf
-          })
-        }
-      } catch {}
+      console.log('[GlobalPlayer] handleNext: bg=' + isBackground, 'url=' + !!immediateUrl, 'wavCache=' + (nextWavCacheRef.current?.trackId?.slice(0,6) || 'none'), 'nxt=' + nextTrack.id.slice(0,6))
 
       if (immediateUrl && audioRef.current) {
         console.log('[GlobalPlayer] ⚡ Immediate src swap for:', nextTrack.name || nextTrack.title)
