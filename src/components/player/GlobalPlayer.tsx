@@ -8,7 +8,7 @@ import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
 import { WebAudioFallbackPlayer, needsWebAudioFallback, audioBufferToWavBlob } from '@/lib/audio/webAudioFallback'
 import { unlockAllAudioContexts } from '@/lib/audio/sharedAudioCtx'
-import { preloadTrack, getCachedUrl, releaseAllExcept, isCached } from '@/lib/audio/audioPreloader'
+import { preloadTrack, getCachedUrl, releaseAllExcept, isCached, isLoading } from '@/lib/audio/audioPreloader'
 import { 
   Play, Pause, SkipBack, SkipForward, ChevronDown, ListMusic, MoreHorizontal,
   Shuffle, Volume2, VolumeX, Mic2, Gauge, Repeat, Repeat1, Music, Moon, Settings2, Bookmark, Plus, Check
@@ -802,8 +802,18 @@ export default function GlobalPlayer() {
 
     // 1순위: 프리로드된 blob URL 사용 (메모리에서 즉시 로드 — 네트워크 요청 없음!)
     const immediateUrl = getImmediatePlayUrl(nextTrack)
+    
+    // ======== 상세 디버그: 왜 blob이 없는지 추적 ========
+    if (isBackground && !immediateUrl) {
+      const cached = getCachedUrl(nextTrack.id)
+      const loading = isLoading(nextTrack.id)
+      const fallback = needsWebAudioFallback(nextTrack.mimeType ?? undefined, (nextTrack.name || nextTrack.title) ?? undefined)
+      const wavReady = nextWavCacheRef.current?.trackId === nextTrack.id
+      debugMeta(`[DBG] cache=${cached ? 'Y' : 'N'} load=${loading ? 'Y' : 'N'} fb=${fallback ? 'Y' : 'N'} wav=${wavReady ? 'Y' : 'N'} id=${nextTrack.id.slice(0, 8)}`)
+    }
+
     if (immediateUrl && audioRef.current) {
-      if (isBackground) debugMeta(`[2] blob found: ${immediateUrl.slice(0, 20)}...`)
+      if (isBackground) debugMeta(`[2] blob OK`)
       console.log('[GlobalPlayer] ⚡ Immediate blob src swap for:', nextTrack.name || nextTrack.title)
 
       if (prevWavUrlRef.current) {
