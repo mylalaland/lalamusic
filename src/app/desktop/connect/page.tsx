@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { getScanSettings } from '@/app/actions/settings'
 import { getDriveContents, searchAudioFilesRecursive } from '@/app/actions/library'
 import { getPlaylists, addTrackToPlaylist } from '@/app/actions/playlist'
-import { analyzeMusicMetadata } from '@/app/actions/metadata'
+
 import { usePlayerStore, MusicFile } from '@/lib/store/usePlayerStore'
 import { useConnectStore } from '@/lib/store/useConnectStore'
 import { useSettingsStore } from '@/lib/store/useSettingsStore'
@@ -116,17 +116,10 @@ function LazyThumbnail({ fileId, mimeType, thumbnailLink }: { fileId: string, mi
     return () => { cancelled = true }
   }, [loaded, fileId, coverArt])
 
-  // Google Drive thumbnailLink는 CORS 문제가 있으므로 프록시 처리
-  const getProxiedUrl = (url: string | null): string | null => {
-    if (!url) return null
-    // lh3.googleusercontent.com 등 Google 도메인의 경우 프록시 경유
-    if (url.includes('googleusercontent.com') || url.includes('google.com')) {
-      return `/api/thumbnail?url=${encodeURIComponent(url)}`
-    }
-    return url
-  }
-
-  const displayUrl = getProxiedUrl(coverArt)
+  // [FIX] 썸네일 프록시 제거 — <img> 태그는 CORS 제한을 받지 않으므로
+  // referrerPolicy="no-referrer"로 Google Drive 썸네일을 직접 로드 가능.
+  // 기존 /api/thumbnail 프록시는 불필요한 Vercel 트래픽을 발생시켰음.
+  const displayUrl = coverArt
 
   return (
     <div ref={ref} className="w-9 h-9 shrink-0 flex items-center justify-center overflow-hidden relative bg-[var(--bg-surface)] border border-[color:var(--tertiary)]/10">
@@ -428,9 +421,6 @@ export default function DesktopConnect() {
   const handleAddToPlaylist = async (playlistId: string) => {
     if (!trackToAdd) return
     const originalId = trackToAdd.id
-    
-    // Ensure file is in DB by analyzing it first
-    await analyzeMusicMetadata(originalId)
     await addTrackToPlaylist(playlistId, originalId)
     
     setShowPlaylistModal(false)
@@ -462,10 +452,10 @@ export default function DesktopConnect() {
       document.body.removeChild(a)
       URL.revokeObjectURL(a.href)
 
-      // 3. 앱 자체 내부 오프라인 캐싱
-      const { analyzeMusicMetadata } = await import('@/app/actions/metadata')
-      const metaRes = await analyzeMusicMetadata(file.id)
-      const metadata = metaRes.success && metaRes.heavyMetadata ? metaRes.heavyMetadata : undefined
+      // 3. 앱 자체 내부 오프라인 캐싱 (클라이언트 사이드 파싱 — Vercel 트래픽 0)
+      const { parseMetadataFromBlob } = await import('@/lib/audio/clientMetadata')
+      const parsed = await parseMetadataFromBlob(blob)
+      const metadata = parsed ? { lyrics: parsed.lyrics, cover_art: parsed.coverArt } : undefined
       
       const { saveToOffline } = await import('@/lib/db/offline')
       await saveToOffline(file, blob, metadata)

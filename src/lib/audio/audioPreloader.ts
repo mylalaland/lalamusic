@@ -152,6 +152,14 @@ export function getCachedUrl(trackId: string): string | null {
 }
 
 /**
+ * 캐시된 Blob 객체를 반환합니다. 없으면 null.
+ * 클라이언트 사이드 메타데이터 파싱에 사용합니다.
+ */
+export function getCachedBlob(trackId: string): Blob | null {
+  return cache.get(trackId)?.blob ?? null
+}
+
+/**
  * 특정 트랙이 캐시에 있는지 확인합니다.
  */
 export function isCached(trackId: string): boolean {

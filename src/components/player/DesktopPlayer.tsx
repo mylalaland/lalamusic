@@ -7,12 +7,13 @@ import {
   Settings2, Bookmark, X, Moon, Plus, Check
 } from 'lucide-react'
 import { usePlayerStore} from '@/lib/store/usePlayerStore'
-import { analyzeMusicMetadata } from '@/app/actions/metadata'
+import { updateTrackMetadataDB } from '@/app/actions/metadata'
+import { parseMetadataFromCache } from '@/lib/audio/clientMetadata'
 import { getExternalLyrics } from '@/app/actions/lyrics'
 import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
 import { WebAudioFallbackPlayer, needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
-import { preloadTrack, getCachedUrl, releaseAllExcept, isCached } from '@/lib/audio/audioPreloader'
+import { preloadTrack, getCachedUrl, getCachedBlob, releaseAllExcept, isCached } from '@/lib/audio/audioPreloader'
 import { AnimatePresence, motion } from 'framer-motion'
 
 const Icon = {
@@ -217,7 +218,9 @@ export default function DesktopPlayer() {
       setLocalCoverArt(null)
     }
 
-    // [OPT] 2단계: IndexedDB 캐시 확인 + 3초 후 서버 메타데이터
+    // [OPT] 2단계: IndexedDB 캐시 확인 + 3초 후 클라이언트 사이드 메타데이터 파싱
+    // [FIX] 기존 Server Action(analyzeMusicMetadata)은 Vercel에서 전체 파일을 다운로드했으므로
+    // 클라이언트 사이드에서 이미 캐시된 Blob을 재사용하여 메타데이터를 파싱합니다.
     if (metaTimerRef.current) { clearTimeout(metaTimerRef.current); metaTimerRef.current = null }
 
     const checkCacheAndFetch = async () => {
@@ -229,19 +232,33 @@ export default function DesktopPlayer() {
         return
       }
       if (metaTrackIdRef.current !== thisTrackId) return
+      // 3초 후 클라이언트 사이드 메타데이터 파싱 (Vercel 트래픽 0)
       metaTimerRef.current = setTimeout(async () => {
         if (metaTrackIdRef.current !== thisTrackId) return
         setMetaLoading(true)
         try {
-          const result = await analyzeMusicMetadata(track.id)
+          const parsed = await parseMetadataFromCache(track.id)
           if (metaTrackIdRef.current !== thisTrackId) return
-          if (result.success && result.data) {
-            updateTrackMetadata(track.id, result.data)
-            if (result.heavyMetadata) {
-              await saveOfflineMetadata(track.id, result.heavyMetadata)
-              if (metaTrackIdRef.current !== thisTrackId) return
-              if (result.heavyMetadata.cover_art) setLocalCoverArt(result.heavyMetadata.cover_art)
+          if (parsed) {
+            const dbData = {
+              title: parsed.title,
+              artist: parsed.artist,
+              album: parsed.album,
+              genre: parsed.genre,
+              duration: parsed.duration,
             }
+            updateTrackMetadata(track.id, dbData)
+            // 커버 아트 & 가사를 IndexedDB에 캐시
+            const heavyMeta: { cover_art?: string | null, lyrics?: string | null } = {}
+            if (parsed.coverArt) heavyMeta.cover_art = parsed.coverArt
+            if (parsed.lyrics) heavyMeta.lyrics = parsed.lyrics
+            if (heavyMeta.cover_art || heavyMeta.lyrics) {
+              await saveOfflineMetadata(track.id, heavyMeta)
+              if (metaTrackIdRef.current !== thisTrackId) return
+              if (parsed.coverArt) setLocalCoverArt(parsed.coverArt)
+            }
+            // DB 업데이트 (경량 Server Action — 텍스트만 전송, ~1KB)
+            updateTrackMetadataDB(track.id, dbData).catch(e => console.warn('DB update failed:', e))
           }
         } catch (e) { console.error(e) }
         finally { if (metaTrackIdRef.current === thisTrackId) setMetaLoading(false) }

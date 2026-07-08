@@ -1,90 +1,64 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { google } from 'googleapis'
-import { parseStream } from 'music-metadata'
-import { getValidGoogleToken } from '../../lib/google/token'
 
-export async function analyzeMusicMetadata(fileId: string) {
+/**
+ * [REFACTORED] DB 업데이트만 수행하는 경량 Server Action
+ * 
+ * 기존 analyzeMusicMetadata는 Vercel 서버에서 Google Drive 전체 파일을 다운로드하여
+ * 메타데이터를 파싱했으므로 대역폭 비용이 매우 컸습니다 (수십~수백 MB/곡).
+ * 
+ * 메타데이터 파싱은 이제 클라이언트 사이드에서 수행합니다 (clientMetadata.ts).
+ * 이 Server Action은 파싱된 결과를 Supabase DB에 저장하는 역할만 합니다.
+ * Vercel 트래픽: 텍스트 메타데이터만 전송 (~1 KB)
+ */
+
+interface MetadataUpdate {
+  title?: string | null
+  artist?: string | null
+  album?: string | null
+  genre?: string | null
+  year?: string | null
+  duration?: number
+}
+
+export async function updateTrackMetadataDB(fileId: string, metadata: MetadataUpdate) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   
   if (!user) return { error: '로그인 필요' }
 
-  const accessToken = await getValidGoogleToken(user.id)
-  const auth = new google.auth.OAuth2()
-  auth.setCredentials({ access_token: accessToken })
-  const drive = google.drive({ version: 'v3', auth })
-
   try {
-    const response = await drive.files.get(
-      { fileId: fileId, alt: 'media' },
-      { responseType: 'stream' }
-    )
+    const updates: Record<string, any> = {}
+    if (metadata.title !== undefined) updates.title = metadata.title
+    if (metadata.artist !== undefined) updates.artist = metadata.artist
+    if (metadata.album !== undefined) updates.album = metadata.album
+    if (metadata.genre !== undefined) updates.genre = metadata.genre
+    if (metadata.year !== undefined) updates.year = metadata.year
+    if (metadata.duration !== undefined) updates.duration = metadata.duration
 
-    // @ts-ignore
-    const metadata = await parseStream(response.data, {
-      mimeType: response.headers['content-type'],
-      size: parseInt(response.headers['content-length'] || '0'),
-    })
+    const { error } = await supabase
+      .from('music_files')
+      .update(updates)
+      .eq('id', fileId)
 
-    // 1. 앨범 아트
-    let coverArt = null
-    if (metadata.common.picture && metadata.common.picture.length > 0) {
-      const pic = metadata.common.picture[0]
-      const base64String = Buffer.from(pic.data).toString('base64')
-      coverArt = `data:${pic.format};base64,${base64String}`
+    if (error) {
+      console.warn(`DB update skipped for ${fileId}:`, error.message)
+      return { error: error.message }
     }
 
-    // 2. 가사 추출 (타임스탬프 포함)
-    let lyrics = null
-    if (metadata.common.lyrics && metadata.common.lyrics.length > 0) {
-        let rawLyrics = ''
-        if (typeof metadata.common.lyrics[0] === 'string') {
-            rawLyrics = metadata.common.lyrics.join('\n')
-        } else {
-            // @ts-ignore
-            rawLyrics = metadata.common.lyrics.map((l: any) => l.text).join('\n')
-        }
-
-        lyrics = rawLyrics.trim()
-    }
-
-    // 3. 제목
-    const title = metadata.common.title || null
-
-    const updates = {
-      title: title,
-      artist: metadata.common.artist || 'Unknown Artist',
-      album: metadata.common.album || 'Unknown Album',
-      genre: metadata.common.genre ? metadata.common.genre.join(', ') : null,
-      year: metadata.common.year?.toString() || null,
-      duration: metadata.format.duration ? Math.round(metadata.format.duration) : 0,
-      // Note: lyrics and cover_art are intentionally omitted to avoid bloating Supabase
-    }
-
-    // DB 업데이트 시도 (실패해도 메타데이터는 반환)
-    try {
-      const { error } = await supabase
-        .from('music_files')
-        .update(updates)
-        .eq('id', fileId)
-      if (error) console.warn(`DB update skipped for ${fileId}:`, error.message)
-    } catch (dbErr: any) {
-      console.warn(`DB update failed for ${fileId}:`, dbErr.message)
-    }
-
-    return { 
-        success: true, 
-        data: updates, 
-        heavyMetadata: {
-            lyrics: lyrics,
-            cover_art: coverArt
-        } 
-    }
-
+    return { success: true }
   } catch (error: any) {
-    console.error(`Metadata Error (${fileId}):`, error.message)
+    console.error(`DB Update Error (${fileId}):`, error.message)
     return { error: error.message }
   }
+}
+
+/**
+ * @deprecated 이 함수는 Vercel에서 전체 오디오 파일을 다운로드하므로 사용하지 마세요.
+ * 대신 clientMetadata.ts의 parseMetadataFromCache()를 사용하세요.
+ */
+export async function analyzeMusicMetadata(fileId: string) {
+  console.warn('[DEPRECATED] analyzeMusicMetadata called — use client-side parsing instead')
+  return { error: 'Deprecated: Use client-side metadata parsing' }
 }

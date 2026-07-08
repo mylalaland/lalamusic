@@ -19,6 +19,7 @@
     "googleapis": "^171.0.0",
     "lucide-react": "^0.563.0",
     "music-metadata": "^11.11.2",
+    "music-metadata-browser": "^2.5.11",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",

@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { recommendMusic } from '@/app/actions/ai'
 import { getScanSettings } from '@/app/actions/settings'
 import { getDriveContents, searchAudioFilesRecursive, getRandomAudioFilesFromFolders } from '@/app/actions/library'
-import { analyzeMusicMetadata } from '@/app/actions/metadata'
+
 import { usePlayerStore } from '@/lib/store/usePlayerStore'
 import { useConnectStore } from '@/lib/store/useConnectStore'
 import { useSettingsStore } from '@/lib/store/useSettingsStore'
@@ -285,13 +285,7 @@ export default function ConnectPage() {
     if (downloadingId) return
     setDownloadingId(item.id); setDownloadProgress(0)
     try {
-      let metadata: any = { lyrics: null, cover_art: null }
-      try {
-        const metaRes = await analyzeMusicMetadata(item.id)
-        if (metaRes.success && metaRes.heavyMetadata) metadata = metaRes.heavyMetadata
-      } catch {}
       // preloader로 직접 다운로드 (Vercel 트래픽 0)
-      const { preloadTrack } = await import('@/lib/audio/audioPreloader')
       const tokenRes = await fetch(`/api/stream-url?id=${item.id}`)
       if (!tokenRes.ok) throw new Error('Token fetch failed')
       const { url, token } = await tokenRes.json()
@@ -307,7 +301,12 @@ export default function ConnectPage() {
         chunks.push(value); received += value.length
         if (contentLength) setDownloadProgress((received / contentLength) * 100)
       }
-      await saveToOffline(item, new Blob(chunks as BlobPart[]), metadata)
+      const blob = new Blob(chunks as BlobPart[])
+      // 클라이언트 사이드 메타데이터 파싱 (Vercel 트래픽 0)
+      const { parseMetadataFromBlob } = await import('@/lib/audio/clientMetadata')
+      const parsed = await parseMetadataFromBlob(blob)
+      const metadata = parsed ? { lyrics: parsed.lyrics, cover_art: parsed.coverArt } : undefined
+      await saveToOffline(item, blob, metadata)
     } catch {}
     finally { setDownloadingId(null); setDownloadProgress(0) }
   }

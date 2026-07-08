@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { getLibraryTracks, getLibraryCount, getScannedFolders, getTracksByFolderIds, deleteFolderAndChildren, syncFilesInFolder, syncOnlyFolders, syncLibraryChunk, getDescendantFolderIds } from '@/app/actions/library'
-import { analyzeMusicMetadata } from '@/app/actions/metadata'
+
 import { createPlaylist, getPlaylists, getPlaylistTracks, addTrackToPlaylist, deletePlaylist, removeTrackFromPlaylist } from '@/app/actions/playlist'
 import { getScanSettings } from '@/app/actions/settings'
 import { searchLibraryWithAI } from '@/app/actions/ai'
@@ -252,13 +252,18 @@ export default function LibraryPage() {
     let processed = 0
     
     try {
-        const { saveOfflineMetadata } = await import('@/lib/db/offline')
+        const { saveOfflineMetadata, getOfflineMetadata } = await import('@/lib/db/offline')
+        const { parseMetadataFromBlob } = await import('@/lib/audio/clientMetadata')
         for (const track of tracks) {
             if (track.artist) continue;
             setAnalyzeProgress(`분석 중: ${track.name}...`)
-            const result = await analyzeMusicMetadata(track.id)
-            if (result.success && result.heavyMetadata) {
-                 await saveOfflineMetadata(track.id, result.heavyMetadata)
+            // 오프라인 캐시에서 Blob 가져오기
+            const offline = await getOfflineMetadata(track.id)
+            if (offline?.blob) {
+              const parsed = await parseMetadataFromBlob(offline.blob)
+              if (parsed) {
+                await saveOfflineMetadata(track.id, { lyrics: parsed.lyrics, cover_art: parsed.coverArt })
+              }
             }
             processed++
         }
