@@ -597,15 +597,23 @@ export default function GlobalPlayer() {
             playStarted = true
             if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
             if (isPlayingRef.current) {
+              // [FIX] EQ AudioContext resume
+              if (equalizerRef.current && equalizerRef.current.audioContext.state === 'suspended') {
+                equalizerRef.current.audioContext.resume().catch(() => {})
+              }
               unlockAllAudioContexts().catch(() => {})
-              audioRef.current!.play().catch((e) => console.warn('Play blocked:', e))
+              audioRef.current!.play()
+                .then(() => console.log('[GlobalPlayer] play() resolved, readyState:', audioRef.current?.readyState))
+                .catch((e) => console.warn('Play blocked:', e))
             }
             audioRef.current?.removeEventListener('canplay', tryPlay)
             audioRef.current?.removeEventListener('loadeddata', tryPlay)
+            audioRef.current?.removeEventListener('loadedmetadata', tryPlay)
           }
           audioRef.current.addEventListener('canplay', tryPlay)
           audioRef.current.addEventListener('loadeddata', tryPlay)
-          if (audioRef.current.readyState >= 2) {
+          audioRef.current.addEventListener('loadedmetadata', tryPlay)
+          if (audioRef.current.readyState >= 1) {
             tryPlay()
           }
         }

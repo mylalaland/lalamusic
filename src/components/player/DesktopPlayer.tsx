@@ -337,16 +337,24 @@ export default function DesktopPlayer() {
             if (audioRef.current) audioRef.current.currentTime = (track as any).initialPosition
           }
           if (audioRef.current) {
-            audioRef.current.play().catch((e) => console.warn('Desktop play blocked:', e))
+            // [FIX] EQ가 AudioContext로 오디오 출력을 가로채므로, suspended 상태면 resume 필수
+            if (equalizerRef.current && equalizerRef.current.audioContext.state === 'suspended') {
+              equalizerRef.current.audioContext.resume().catch(() => {})
+            }
+            audioRef.current.play()
+              .then(() => console.log('[DesktopPlayer] play() resolved, readyState:', audioRef.current?.readyState))
+              .catch((e) => console.warn('Desktop play blocked:', e))
           }
           // cleanup
           audioRef.current?.removeEventListener('canplay', tryPlay)
           audioRef.current?.removeEventListener('loadeddata', tryPlay)
+          audioRef.current?.removeEventListener('loadedmetadata', tryPlay)
         }
         audioRef.current.addEventListener('canplay', tryPlay)
         audioRef.current.addEventListener('loadeddata', tryPlay)
+        audioRef.current.addEventListener('loadedmetadata', tryPlay)
         // Safety: readyState가 이미 충분하면 즉시 재생 시도
-        if (audioRef.current.readyState >= 2) {
+        if (audioRef.current.readyState >= 1) {
           tryPlay()
         }
       }
