@@ -137,20 +137,31 @@ export default function DesktopPlayer() {
       if (unlocked) return
       unlocked = true
 
-      // [FIX] AudioContext를 user gesture 내에서 미리 생성 + resume
-      // 이래야 나중에 EQ 생성 시 이미 running 상태인 AudioContext를 재사용
+      // [FIX] AudioContext + EQ를 user gesture 내에서 미리 생성
+      // createMediaElementSource가 로딩 중간에 호출되면 이벤트가 발생하지 않음
       const ctx = getMediaAudioContext()
       if (ctx && ctx.state === 'suspended') {
         ctx.resume().catch(() => {})
+      }
+
+      // EQ를 트랙 로드 전에 미리 생성 (src 없는 상태에서도 가능)
+      if (!equalizerRef.current && audioRef.current) {
+        try {
+          equalizerRef.current = new Equalizer(audioRef.current)
+          const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
+          equalizerRef.current.setVolume(effectiveVolume)
+          audioRef.current.volume = 1
+          console.log('[DesktopPlayer] EQ pre-initialized on user gesture, ctx:', equalizerRef.current.audioContext.state)
+        } catch(e) {
+          console.warn('[DesktopPlayer] EQ pre-init failed:', e)
+          equalizerRef.current = null
+        }
       }
 
       // Only do play→pause if audio is NOT already playing
       if (audioRef.current && audioRef.current.paused) {
         const silentPlay = audioRef.current.play()
         silentPlay?.then(() => { audioRef.current?.pause() }).catch(() => {})
-      }
-      if (equalizerRef.current?.audioContext?.state === 'suspended') {
-        equalizerRef.current.audioContext.resume().catch(() => {})
       }
       // @ts-ignore
       if (fallbackPlayerRef.current?.audioContext?.state === 'suspended') {
@@ -333,8 +344,7 @@ export default function DesktopPlayer() {
         audioRef.current.playbackRate = playbackRate
         retryCountRef.current = 0
 
-        // [STEP 1] 이벤트 리스너를 load() 전에 등록!
-        // blob URL은 메모리에 있어 load() 즉시 이벤트 발생 가능
+        // [STEP 1] 이벤트 리스너를 load() 전에 등록
         let playStarted = false
         const tryPlay = () => {
           if (playStarted) return
@@ -343,7 +353,6 @@ export default function DesktopPlayer() {
             if (audioRef.current) audioRef.current.currentTime = (track as any).initialPosition
           }
           if (audioRef.current) {
-            // EQ AudioContext resume 보장
             if (equalizerRef.current && equalizerRef.current.audioContext.state === 'suspended') {
               equalizerRef.current.audioContext.resume().catch(() => {})
             }
@@ -356,7 +365,6 @@ export default function DesktopPlayer() {
               .then(() => console.log('[DesktopPlayer] play() OK'))
               .catch((e) => console.warn('Desktop play blocked:', e))
           }
-          // cleanup
           audioRef.current?.removeEventListener('canplay', tryPlay)
           audioRef.current?.removeEventListener('loadeddata', tryPlay)
           audioRef.current?.removeEventListener('loadedmetadata', tryPlay)
@@ -365,32 +373,20 @@ export default function DesktopPlayer() {
         audioRef.current.addEventListener('loadeddata', tryPlay)
         audioRef.current.addEventListener('loadedmetadata', tryPlay)
 
-        // [STEP 2] EQ 초기화 (한번만)
-        if (!equalizerRef.current && newSrc.startsWith('blob:')) {
-          try {
-            equalizerRef.current = new Equalizer(audioRef.current)
-            eqGains.forEach((g, i) => equalizerRef.current!.setGain(i, g))
-            const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
-            equalizerRef.current.setVolume(effectiveVolume)
-            audioRef.current.volume = 1
-            console.log('[DesktopPlayer] EQ initialized, ctx:', equalizerRef.current.audioContext.state)
-          } catch(e) {
-            console.warn('[DesktopPlayer] EQ init failed:', e)
-            equalizerRef.current = null
-          }
-        }
-
-        // EQ 있으면 audio.volume=1, 없으면 직접 볼륨 제어
+        // [STEP 2] 볼륨 설정 (EQ는 unlockAudio에서 이미 생성됨)
         if (equalizerRef.current) {
           audioRef.current.volume = 1
+          const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
+          equalizerRef.current.setVolume(effectiveVolume)
+          eqGains.forEach((g, i) => equalizerRef.current!.setGain(i, g))
         } else {
           audioRef.current.volume = isMuted ? 0 : volume
         }
 
-        // [STEP 3] load() — 이벤트 리스너가 이미 등록된 상태에서 호출
+        // [STEP 3] load()
         audioRef.current.load()
 
-        // Safety: 이미 readyState 충분하면 즉시 재생
+        // Safety fallback
         if (audioRef.current.readyState >= 1) {
           tryPlay()
         }
