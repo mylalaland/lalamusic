@@ -15,6 +15,7 @@ import { Equalizer } from '@/lib/audio/equalizer'
 import { WebAudioFallbackPlayer, needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
 import { preloadTrack, getCachedUrl, getCachedBlob, releaseAllExcept, isCached } from '@/lib/audio/audioPreloader'
 import { getMediaAudioContext } from '@/lib/audio/sharedAudioCtx'
+import { transcodeToWav } from '@/lib/audio/transcoder'
 import { AnimatePresence, motion } from 'framer-motion'
 
 const Icon = {
@@ -175,7 +176,7 @@ export default function DesktopPlayer() {
   }
 
   // [NEW] Start playback via Web Audio fallback (for iOS FLAC/OGG etc)
-  const startFallbackPlayback = async (url: string) => {
+  const startFallbackPlayback = async (url: string, trackId?: string, fileName?: string) => {
     cleanupFallback()
     const player = new WebAudioFallbackPlayer(undefined)
     fallbackPlayerRef.current = player
@@ -199,6 +200,23 @@ export default function DesktopPlayer() {
       player.setPlaybackRate(playbackRate)
       setIsFallbackMode(true)
       await player.play()
+    } else if (trackId) {
+      // decodeAudioData도 실패 → FFmpeg.wasm으로 트랜스코딩
+      console.log('[DesktopPlayer] decodeAudioData failed, trying FFmpeg transcode...')
+      cleanupFallback()
+      try {
+        const wavUrl = await transcodeToWav(url, trackId, fileName)
+        // 트랜스코딩된 WAV를 <audio>로 직접 재생
+        if (audioRef.current) {
+          audioRef.current.src = wavUrl
+          audioRef.current.volume = isMuted ? 0 : volume
+          audioRef.current.playbackRate = playbackRate
+          await audioRef.current.play()
+          console.log('[DesktopPlayer] FFmpeg transcoded playback OK')
+        }
+      } catch (transcodeErr) {
+        console.error('[DesktopPlayer] FFmpeg transcode failed:', transcodeErr)
+      }
     }
   }
 
@@ -314,7 +332,7 @@ export default function DesktopPlayer() {
       // [NEW] Check if this format needs Web Audio fallback
       if (needsWebAudioFallback(track.mimeType ?? undefined, (track.name || track.title) ?? undefined)) {
         console.log('[DesktopPlayer] Unsupported format detected, using Web Audio fallback')
-        startFallbackPlayback(newSrc)
+        startFallbackPlayback(newSrc, track.id, track.name || track.title || '')
         return
       }
 
@@ -359,11 +377,10 @@ export default function DesktopPlayer() {
           .catch((e) => {
             if (e.name === 'NotSupportedError') {
               // Chrome이 이 코덱을 지원하지 않음 (예: ALAC m4a)
-              // WebAudio decodeAudioData → WAV 변환 → <audio> 재생으로 폴백
-              console.warn('[DesktopPlayer] Format not supported by <audio>, falling back to WebAudio:', e.message)
+              console.warn('[DesktopPlayer] Format not supported, trying fallback chain:', e.message)
               audioRef.current!.removeAttribute('src')
-              audioRef.current!.load() // 실패한 소스 정리
-              startFallbackPlayback(newSrc)
+              audioRef.current!.load()
+              startFallbackPlayback(newSrc, track.id, track.name || track.title || '')
             } else {
               console.warn('[DesktopPlayer] play() error:', e.name, e.message)
             }
@@ -688,7 +705,7 @@ export default function DesktopPlayer() {
         console.log('[DesktopPlayer] <audio> error on unsupported format, switching to Web Audio fallback')
         // 이미 blob URL로 로드되어 있으므로 현재 src 사용
         const currentSrc = audioRef.current?.src || ''
-        if (currentSrc) startFallbackPlayback(currentSrc)
+        if (currentSrc) startFallbackPlayback(currentSrc, track?.id, (track?.name || track?.title) ?? '')
         return
       }
     }
