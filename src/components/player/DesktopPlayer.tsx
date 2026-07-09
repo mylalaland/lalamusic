@@ -137,25 +137,10 @@ export default function DesktopPlayer() {
       if (unlocked) return
       unlocked = true
 
-      // [FIX] AudioContext + EQ를 user gesture 내에서 미리 생성
-      // createMediaElementSource가 로딩 중간에 호출되면 이벤트가 발생하지 않음
+      // AudioContext를 user gesture 내에서 미리 생성 + resume
       const ctx = getMediaAudioContext()
       if (ctx && ctx.state === 'suspended') {
         ctx.resume().catch(() => {})
-      }
-
-      // EQ를 트랙 로드 전에 미리 생성 (src 없는 상태에서도 가능)
-      if (!equalizerRef.current && audioRef.current) {
-        try {
-          equalizerRef.current = new Equalizer(audioRef.current)
-          const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
-          equalizerRef.current.setVolume(effectiveVolume)
-          audioRef.current.volume = 1
-          console.log('[DesktopPlayer] EQ pre-initialized on user gesture, ctx:', equalizerRef.current.audioContext.state)
-        } catch(e) {
-          console.warn('[DesktopPlayer] EQ pre-init failed:', e)
-          equalizerRef.current = null
-        }
       }
 
       // Only do play→pause if audio is NOT already playing
@@ -337,14 +322,10 @@ export default function DesktopPlayer() {
       cleanupFallback()
 
       if (audioRef.current) {
-        // blob URL은 same-origin이므로 crossOrigin 불필요
-        if (!newSrc.startsWith('blob:')) audioRef.current.crossOrigin = "anonymous"
-        else audioRef.current.removeAttribute('crossorigin')
-        audioRef.current.src = newSrc
-        audioRef.current.playbackRate = playbackRate
         retryCountRef.current = 0
 
-        // [STEP 1] 이벤트 리스너를 load() 전에 등록
+        // [STEP 1] 이벤트 리스너를 src 설정 전에 등록!
+        // blob URL은 src 설정만으로 즉시 로딩 → 이벤트가 바로 발생할 수 있음
         let playStarted = false
         const tryPlay = () => {
           if (playStarted) return
@@ -373,7 +354,13 @@ export default function DesktopPlayer() {
         audioRef.current.addEventListener('loadeddata', tryPlay)
         audioRef.current.addEventListener('loadedmetadata', tryPlay)
 
-        // [STEP 2] 볼륨 설정 (EQ는 unlockAudio에서 이미 생성됨)
+        // [STEP 2] src 설정 (이벤트 리스너가 이미 등록된 상태)
+        if (!newSrc.startsWith('blob:')) audioRef.current.crossOrigin = "anonymous"
+        else audioRef.current.removeAttribute('crossorigin')
+        audioRef.current.src = newSrc
+        audioRef.current.playbackRate = playbackRate
+
+        // [STEP 3] 볼륨 설정
         if (equalizerRef.current) {
           audioRef.current.volume = 1
           const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
@@ -383,10 +370,10 @@ export default function DesktopPlayer() {
           audioRef.current.volume = isMuted ? 0 : volume
         }
 
-        // [STEP 3] load()
+        // [STEP 4] load()
         audioRef.current.load()
 
-        // Safety fallback
+        // [STEP 5] Safety — 이미 로드 완료되었을 경우
         if (audioRef.current.readyState >= 1) {
           tryPlay()
         }
@@ -455,7 +442,37 @@ export default function DesktopPlayer() {
     }
   }, [isPlaying, track?.id, isFallbackMode])
 
-  // (EQ 초기화는 위 track 변경 useEffect 내에서 audio.load() 직후 수행)
+  // EQ 초기화 — canplaythrough에서 안전하게 한번만 생성
+  useEffect(() => {
+    if (!audioRef.current) return
+    const audio = audioRef.current
+    const initEQ = () => {
+      if (!equalizerRef.current && audio) {
+        const src = audio.src || ''
+        const isSameOrigin = src.startsWith('blob:') || src.startsWith('data:')
+        if (!isSameOrigin) {
+          const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
+          audio.volume = effectiveVolume
+          return
+        }
+        try {
+          equalizerRef.current = new Equalizer(audio)
+          eqGains.forEach((g, i) => equalizerRef.current!.setGain(i, g))
+          const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
+          equalizerRef.current.setVolume(effectiveVolume)
+          audio.volume = 1
+          console.log('[DesktopPlayer] EQ initialized via canplaythrough, ctx:', equalizerRef.current.audioContext.state)
+        } catch(e) {
+          console.warn('EQ init failed:', e)
+          const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
+          audio.volume = effectiveVolume
+          equalizerRef.current = null
+        }
+      }
+    }
+    audio.addEventListener('canplaythrough', initEQ, { once: true })
+    return () => audio.removeEventListener('canplaythrough', initEQ)
+  }, [track?.id])
 
   // 볼륨 & 재생속도 동기화
   useEffect(() => {
