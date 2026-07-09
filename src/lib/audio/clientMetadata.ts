@@ -40,6 +40,40 @@ export async function parseMetadataFromCache(trackId: string): Promise<ParsedMet
 }
 
 /**
+ * Blob이 캐시될 때까지 대기한 후 메타데이터를 파싱합니다.
+ * preloadTrack이 완료되기 전에 호출해도 안전합니다.
+ * 
+ * @param trackId - 트랙 ID (audioPreloader 캐시 키)
+ * @param maxWaitMs - 최대 대기 시간 (기본 30초)
+ * @param signal - 취소용 AbortSignal
+ * @returns ParsedMetadata 또는 null (타임아웃/파싱 실패 시)
+ */
+export async function waitForBlobAndParse(
+  trackId: string,
+  maxWaitMs: number = 30000,
+  signal?: { cancelled: boolean }
+): Promise<ParsedMetadata | null> {
+  const startTime = Date.now()
+  let delay = 500 // 첫 폴링 0.5초 후
+
+  while (Date.now() - startTime < maxWaitMs) {
+    if (signal?.cancelled) return null
+
+    const blob = getCachedBlob(trackId)
+    if (blob) {
+      return parseMetadataFromBlob(blob)
+    }
+
+    // 대기 (점진적 증가: 500ms → 1s → 2s → 3s max)
+    await new Promise(r => setTimeout(r, delay))
+    delay = Math.min(delay * 1.5, 3000)
+  }
+
+  console.warn('[ClientMeta] Timed out waiting for blob:', trackId.slice(0, 8))
+  return null
+}
+
+/**
  * Blob에서 직접 메타데이터를 파싱합니다.
  */
 export async function parseMetadataFromBlob(blob: Blob): Promise<ParsedMetadata | null> {

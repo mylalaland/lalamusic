@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { usePlayerStore} from '@/lib/store/usePlayerStore'
 import { updateTrackMetadataDB } from '@/app/actions/metadata'
-import { parseMetadataFromCache } from '@/lib/audio/clientMetadata'
+import { waitForBlobAndParse } from '@/lib/audio/clientMetadata'
 import { getExternalLyrics } from '@/app/actions/lyrics'
 import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
@@ -221,7 +221,7 @@ export default function DesktopPlayer() {
     // [OPT] 2단계: IndexedDB 캐시 확인 + 3초 후 클라이언트 사이드 메타데이터 파싱
     // [FIX] 기존 Server Action(analyzeMusicMetadata)은 Vercel에서 전체 파일을 다운로드했으므로
     // 클라이언트 사이드에서 이미 캐시된 Blob을 재사용하여 메타데이터를 파싱합니다.
-    if (metaTimerRef.current) { clearTimeout(metaTimerRef.current); metaTimerRef.current = null }
+    if (metaTimerRef.current) { (metaTimerRef.current as any)?.cleanup?.(); metaTimerRef.current = null }
 
     const checkCacheAndFetch = async () => {
       const { getOfflineMetadata, saveOfflineMetadata } = await import('@/lib/db/offline')
@@ -232,37 +232,38 @@ export default function DesktopPlayer() {
         return
       }
       if (metaTrackIdRef.current !== thisTrackId) return
-      // 3초 후 클라이언트 사이드 메타데이터 파싱 (Vercel 트래픽 0)
-      metaTimerRef.current = setTimeout(async () => {
+      // Blob이 캐시될 때까지 대기 후 파싱 (preload 완료 대기, Vercel 트래픽 0)
+      const signal = { cancelled: false }
+      const cleanup = () => { signal.cancelled = true }
+      // metaTimerRef를 cleanup 추적용으로 재활용
+      metaTimerRef.current = { cleanup } as any
+      setMetaLoading(true)
+      try {
+        const parsed = await waitForBlobAndParse(track.id, 60000, signal)
         if (metaTrackIdRef.current !== thisTrackId) return
-        setMetaLoading(true)
-        try {
-          const parsed = await parseMetadataFromCache(track.id)
-          if (metaTrackIdRef.current !== thisTrackId) return
-          if (parsed) {
-            const dbData = {
-              title: parsed.title,
-              artist: parsed.artist,
-              album: parsed.album,
-              genre: parsed.genre,
-              duration: parsed.duration,
-            }
-            updateTrackMetadata(track.id, dbData)
-            // 커버 아트 & 가사를 IndexedDB에 캐시
-            const heavyMeta: { cover_art?: string | null, lyrics?: string | null } = {}
-            if (parsed.coverArt) heavyMeta.cover_art = parsed.coverArt
-            if (parsed.lyrics) heavyMeta.lyrics = parsed.lyrics
-            if (heavyMeta.cover_art || heavyMeta.lyrics) {
-              await saveOfflineMetadata(track.id, heavyMeta)
-              if (metaTrackIdRef.current !== thisTrackId) return
-              if (parsed.coverArt) setLocalCoverArt(parsed.coverArt)
-            }
-            // DB 업데이트 (경량 Server Action — 텍스트만 전송, ~1KB)
-            updateTrackMetadataDB(track.id, dbData).catch(e => console.warn('DB update failed:', e))
+        if (parsed) {
+          const dbData = {
+            title: parsed.title,
+            artist: parsed.artist,
+            album: parsed.album,
+            genre: parsed.genre,
+            duration: parsed.duration,
           }
-        } catch (e) { console.error(e) }
-        finally { if (metaTrackIdRef.current === thisTrackId) setMetaLoading(false) }
-      }, 3000)
+          updateTrackMetadata(track.id, dbData)
+          // 커버 아트 & 가사를 IndexedDB에 캐시
+          const heavyMeta: { cover_art?: string | null, lyrics?: string | null } = {}
+          if (parsed.coverArt) heavyMeta.cover_art = parsed.coverArt
+          if (parsed.lyrics) heavyMeta.lyrics = parsed.lyrics
+          if (heavyMeta.cover_art || heavyMeta.lyrics) {
+            await saveOfflineMetadata(track.id, heavyMeta)
+            if (metaTrackIdRef.current !== thisTrackId) return
+            if (parsed.coverArt) setLocalCoverArt(parsed.coverArt)
+          }
+          // DB 업데이트 (경량 Server Action — 텍스트만 전송, ~1KB)
+          updateTrackMetadataDB(track.id, dbData).catch(e => console.warn('DB update failed:', e))
+        }
+      } catch (e) { console.error(e) }
+      finally { if (metaTrackIdRef.current === thisTrackId) setMetaLoading(false) }
     }
     checkCacheAndFetch()
 
