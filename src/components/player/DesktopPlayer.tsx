@@ -372,14 +372,21 @@ export default function DesktopPlayer() {
         }
 
         // [STEP 4] load()
-        console.log('[DesktopPlayer] Calling load(), readyState before:', audioRef.current.readyState)
         audioRef.current.load()
-        console.log('[DesktopPlayer] After load(), readyState:', audioRef.current.readyState)
 
-        // [STEP 5] Safety — 이미 로드 완료되었을 경우
-        if (audioRef.current.readyState >= 1) {
-          tryPlay()
-        }
+        // [STEP 5] 폴링 fallback — 이벤트가 발생하지 않는 경우 대비
+        let pollCount = 0
+        const pollInterval = setInterval(() => {
+          pollCount++
+          if (audioRef.current && audioRef.current.readyState >= 1) {
+            console.log('[DesktopPlayer] Poll: readyState =', audioRef.current.readyState, '— calling tryPlay')
+            clearInterval(pollInterval)
+            tryPlay()
+          } else if (pollCount >= 100) {
+            console.warn('[DesktopPlayer] Poll: timeout after 10s, readyState still', audioRef.current?.readyState)
+            clearInterval(pollInterval)
+          }
+        }, 100)
       }
     }
 
