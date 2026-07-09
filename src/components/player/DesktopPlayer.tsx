@@ -320,7 +320,14 @@ export default function DesktopPlayer() {
 
       // Standard <audio> playback path
       cleanupFallback()
-      console.log('[DesktopPlayer] Setting up audio, audioRef:', !!audioRef.current, 'src:', newSrc?.slice(0, 30))
+      // [DEBUG] blob MIME 확인
+      const cachedBlob = getCachedBlob(track.id)
+      console.log('[DesktopPlayer] Setting up audio, audioRef:', !!audioRef.current,
+        'src:', newSrc?.slice(0, 30),
+        'blobType:', cachedBlob?.type,
+        'blobSize:', cachedBlob?.size,
+        'trackMime:', track.mimeType,
+        'trackName:', track.name?.slice(-10))
 
       if (audioRef.current) {
         retryCountRef.current = 0
@@ -383,7 +390,12 @@ export default function DesktopPlayer() {
             clearInterval(pollInterval)
             tryPlay()
           } else if (pollCount >= 100) {
-            console.warn('[DesktopPlayer] Poll: timeout after 10s, readyState still', audioRef.current?.readyState)
+            const a = audioRef.current
+            console.warn('[DesktopPlayer] Poll timeout:',
+              'readyState:', a?.readyState,
+              'networkState:', a?.networkState,
+              'error:', a?.error?.code, a?.error?.message,
+              'src:', a?.src?.slice(0, 40))
             clearInterval(pollInterval)
           }
         }, 100)
