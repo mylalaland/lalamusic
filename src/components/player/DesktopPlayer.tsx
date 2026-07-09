@@ -14,6 +14,7 @@ import { addBookmark } from '@/app/actions/bookmarks'
 import { Equalizer } from '@/lib/audio/equalizer'
 import { WebAudioFallbackPlayer, needsWebAudioFallback } from '@/lib/audio/webAudioFallback'
 import { preloadTrack, getCachedUrl, getCachedBlob, releaseAllExcept, isCached } from '@/lib/audio/audioPreloader'
+import { getMediaAudioContext } from '@/lib/audio/sharedAudioCtx'
 import { AnimatePresence, motion } from 'framer-motion'
 
 const Icon = {
@@ -135,6 +136,13 @@ export default function DesktopPlayer() {
     const unlockAudio = () => {
       if (unlocked) return
       unlocked = true
+
+      // [FIX] AudioContext를 user gesture 내에서 미리 생성 + resume
+      // 이래야 나중에 EQ 생성 시 이미 running 상태인 AudioContext를 재사용
+      const ctx = getMediaAudioContext()
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {})
+      }
 
       // Only do play→pause if audio is NOT already playing
       if (audioRef.current && audioRef.current.paused) {
@@ -323,18 +331,34 @@ export default function DesktopPlayer() {
         else audioRef.current.removeAttribute('crossorigin')
         audioRef.current.src = newSrc
         audioRef.current.playbackRate = playbackRate
-        // [FIX] EQ가 이미 생성되어 있으면 audio.volume=1 유지 (볼륨은 GainNode 제어)
+        retryCountRef.current = 0
+        audioRef.current.load()
+
+        // [FIX] EQ를 play() 전에 초기화 — canplaythrough에서 하면 user gesture가
+        // 이미 만료되어 AudioContext가 suspended 상태로 생성됨
+        if (!equalizerRef.current && newSrc.startsWith('blob:')) {
+          try {
+            equalizerRef.current = new Equalizer(audioRef.current)
+            eqGains.forEach((g, i) => equalizerRef.current!.setGain(i, g))
+            const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
+            equalizerRef.current.setVolume(effectiveVolume)
+            audioRef.current.volume = 1 // 볼륨은 GainNode가 제어
+            console.log('[DesktopPlayer] EQ initialized, ctx:', equalizerRef.current.audioContext.state)
+          } catch(e) {
+            console.warn('[DesktopPlayer] EQ init failed:', e)
+            equalizerRef.current = null
+          }
+        }
+
+        // EQ 있으면 audio.volume=1, 없으면 직접 볼륨 제어
         if (equalizerRef.current) {
           audioRef.current.volume = 1
         } else {
           audioRef.current.volume = isMuted ? 0 : volume
         }
-        retryCountRef.current = 0
-        console.log('[DesktopPlayer] Loading src, EQ:', !!equalizerRef.current, 'volume:', audioRef.current.volume)
-        audioRef.current.load()
-        
+
         // [FIX] m4a blob에서 canplay가 발생하지 않는 경우 대비
-        // canplay + loadeddata 양쪽 모두 리스닝 + safety timeout
+        // canplay + loadeddata + loadedmetadata 모두 리스닝
         let playStarted = false
         const tryPlay = () => {
           if (playStarted) return
@@ -343,20 +367,18 @@ export default function DesktopPlayer() {
             if (audioRef.current) audioRef.current.currentTime = (track as any).initialPosition
           }
           if (audioRef.current) {
-            // [FIX] EQ가 AudioContext로 오디오 출력을 가로채므로, suspended 상태면 resume 필수
+            // EQ AudioContext resume 보장
             if (equalizerRef.current && equalizerRef.current.audioContext.state === 'suspended') {
               equalizerRef.current.audioContext.resume().catch(() => {})
             }
-            console.log('[DesktopPlayer] tryPlay() called —',
+            console.log('[DesktopPlayer] tryPlay() —',
               'EQ:', !!equalizerRef.current,
               'ctxState:', equalizerRef.current?.audioContext?.state ?? 'N/A',
               'vol:', audioRef.current.volume,
               'readyState:', audioRef.current.readyState,
-              'paused:', audioRef.current.paused,
-              'duration:', audioRef.current.duration,
-              'src:', audioRef.current.src?.slice(0, 40))
+              'paused:', audioRef.current.paused)
             audioRef.current.play()
-              .then(() => console.log('[DesktopPlayer] play() OK, paused:', audioRef.current?.paused))
+              .then(() => console.log('[DesktopPlayer] play() OK'))
               .catch((e) => console.warn('Desktop play blocked:', e))
           }
           // cleanup
@@ -367,7 +389,6 @@ export default function DesktopPlayer() {
         audioRef.current.addEventListener('canplay', tryPlay)
         audioRef.current.addEventListener('loadeddata', tryPlay)
         audioRef.current.addEventListener('loadedmetadata', tryPlay)
-        // Safety: readyState가 이미 충분하면 즉시 재생 시도
         if (audioRef.current.readyState >= 1) {
           tryPlay()
         }
@@ -436,40 +457,7 @@ export default function DesktopPlayer() {
     }
   }, [isPlaying, track?.id, isFallbackMode])
 
-  // EQ 초기화 — canplaythrough에서 안전하게 한번만 생성
-  useEffect(() => {
-    if (!audioRef.current) return
-    const audio = audioRef.current
-    const initEQ = () => {
-      if (!equalizerRef.current && audio) {
-        // Blob URLs are same-origin, so EQ should work
-        const src = audio.src || ''
-        const isSameOrigin = src.startsWith('blob:') || src.startsWith('data:')
-        if (!isSameOrigin) {
-          console.log('[DesktopPlayer] Skipping EQ for non-blob source')
-          const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
-          audio.volume = effectiveVolume
-          return
-        }
-        try {
-          equalizerRef.current = new Equalizer(audio)
-          // 현재 EQ gains 적용
-          eqGains.forEach((g, i) => equalizerRef.current!.setGain(i, g))
-          const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
-          equalizerRef.current.setVolume(effectiveVolume)
-          audio.volume = 1
-        } catch(e) {
-          console.warn('EQ init failed (CORS?), falling back to direct audio:', e)
-          // If EQ init failed, ensure audio still plays directly
-          const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
-          audio.volume = effectiveVolume
-          equalizerRef.current = null
-        }
-      }
-    }
-    audio.addEventListener('canplaythrough', initEQ, { once: true })
-    return () => audio.removeEventListener('canplaythrough', initEQ)
-  }, [track?.id])
+  // (EQ 초기화는 위 track 변경 useEffect 내에서 audio.load() 직후 수행)
 
   // 볼륨 & 재생속도 동기화
   useEffect(() => {
