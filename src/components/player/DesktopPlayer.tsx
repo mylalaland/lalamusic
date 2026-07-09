@@ -332,43 +332,15 @@ export default function DesktopPlayer() {
       if (audioRef.current) {
         retryCountRef.current = 0
 
-        // [STEP 1] 이벤트 리스너를 src 설정 전에 등록!
-        // blob URL은 src 설정만으로 즉시 로딩 → 이벤트가 바로 발생할 수 있음
-        let playStarted = false
-        const tryPlay = () => {
-          if (playStarted) return
-          playStarted = true
-          if ((track as any).initialPosition) {
-            if (audioRef.current) audioRef.current.currentTime = (track as any).initialPosition
-          }
-          if (audioRef.current) {
-            if (equalizerRef.current && equalizerRef.current.audioContext.state === 'suspended') {
-              equalizerRef.current.audioContext.resume().catch(() => {})
-            }
-            console.log('[DesktopPlayer] tryPlay() —',
-              'EQ:', !!equalizerRef.current,
-              'ctxState:', equalizerRef.current?.audioContext?.state ?? 'N/A',
-              'vol:', audioRef.current.volume,
-              'readyState:', audioRef.current.readyState)
-            audioRef.current.play()
-              .then(() => console.log('[DesktopPlayer] play() OK'))
-              .catch((e) => console.warn('Desktop play blocked:', e))
-          }
-          audioRef.current?.removeEventListener('canplay', tryPlay)
-          audioRef.current?.removeEventListener('loadeddata', tryPlay)
-          audioRef.current?.removeEventListener('loadedmetadata', tryPlay)
-        }
-        audioRef.current.addEventListener('canplay', tryPlay)
-        audioRef.current.addEventListener('loadeddata', tryPlay)
-        audioRef.current.addEventListener('loadedmetadata', tryPlay)
-
-        // [STEP 2] src 설정 (이벤트 리스너가 이미 등록된 상태)
+        // crossOrigin 설정
         if (!newSrc.startsWith('blob:')) audioRef.current.crossOrigin = "anonymous"
         else audioRef.current.removeAttribute('crossorigin')
+
+        // src + playbackRate 설정
         audioRef.current.src = newSrc
         audioRef.current.playbackRate = playbackRate
 
-        // [STEP 3] 볼륨 설정
+        // 볼륨 설정
         if (equalizerRef.current) {
           audioRef.current.volume = 1
           const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
@@ -378,27 +350,21 @@ export default function DesktopPlayer() {
           audioRef.current.volume = isMuted ? 0 : volume
         }
 
-        // [STEP 4] load()
-        audioRef.current.load()
+        // 초기 위치
+        if ((track as any).initialPosition) {
+          audioRef.current.currentTime = (track as any).initialPosition
+        }
 
-        // [STEP 5] 폴링 fallback — 이벤트가 발생하지 않는 경우 대비
-        let pollCount = 0
-        const pollInterval = setInterval(() => {
-          pollCount++
-          if (audioRef.current && audioRef.current.readyState >= 1) {
-            console.log('[DesktopPlayer] Poll: readyState =', audioRef.current.readyState, '— calling tryPlay')
-            clearInterval(pollInterval)
-            tryPlay()
-          } else if (pollCount >= 100) {
-            const a = audioRef.current
-            console.warn('[DesktopPlayer] Poll timeout:',
-              'readyState:', a?.readyState,
-              'networkState:', a?.networkState,
-              'error:', a?.error?.code, a?.error?.message,
-              'src:', a?.src?.slice(0, 40))
-            clearInterval(pollInterval)
-          }
-        }, 100)
+        // EQ AudioContext resume
+        if (equalizerRef.current && equalizerRef.current.audioContext.state === 'suspended') {
+          equalizerRef.current.audioContext.resume().catch(() => {})
+        }
+
+        // 직접 play() — load()를 호출하지 않고 play()가 알아서 로드함
+        console.log('[DesktopPlayer] Calling play() directly...')
+        audioRef.current.play()
+          .then(() => console.log('[DesktopPlayer] play() OK'))
+          .catch((e) => console.error('[DesktopPlayer] play() FAILED:', e.name, e.message, e))
       }
     }
 
