@@ -320,14 +320,6 @@ export default function DesktopPlayer() {
 
       // Standard <audio> playback path
       cleanupFallback()
-      // [DEBUG] blob MIME 확인
-      const cachedBlob = getCachedBlob(track.id)
-      console.log('[DesktopPlayer] Setting up audio, audioRef:', !!audioRef.current,
-        'src:', newSrc?.slice(0, 30),
-        'blobType:', cachedBlob?.type,
-        'blobSize:', cachedBlob?.size,
-        'trackMime:', track.mimeType,
-        'trackName:', track.name?.slice(-10))
 
       if (audioRef.current) {
         retryCountRef.current = 0
@@ -364,7 +356,18 @@ export default function DesktopPlayer() {
         console.log('[DesktopPlayer] Calling play() directly...')
         audioRef.current.play()
           .then(() => console.log('[DesktopPlayer] play() OK'))
-          .catch((e) => console.error('[DesktopPlayer] play() FAILED:', e.name, e.message, e))
+          .catch((e) => {
+            if (e.name === 'NotSupportedError') {
+              // Chrome이 이 코덱을 지원하지 않음 (예: ALAC m4a)
+              // WebAudio decodeAudioData → WAV 변환 → <audio> 재생으로 폴백
+              console.warn('[DesktopPlayer] Format not supported by <audio>, falling back to WebAudio:', e.message)
+              audioRef.current!.removeAttribute('src')
+              audioRef.current!.load() // 실패한 소스 정리
+              startFallbackPlayback(newSrc)
+            } else {
+              console.warn('[DesktopPlayer] play() error:', e.name, e.message)
+            }
+          })
       }
     }
 
