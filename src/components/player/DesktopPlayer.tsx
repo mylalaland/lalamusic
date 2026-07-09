@@ -332,33 +332,9 @@ export default function DesktopPlayer() {
         audioRef.current.src = newSrc
         audioRef.current.playbackRate = playbackRate
         retryCountRef.current = 0
-        audioRef.current.load()
 
-        // [FIX] EQ를 play() 전에 초기화 — canplaythrough에서 하면 user gesture가
-        // 이미 만료되어 AudioContext가 suspended 상태로 생성됨
-        if (!equalizerRef.current && newSrc.startsWith('blob:')) {
-          try {
-            equalizerRef.current = new Equalizer(audioRef.current)
-            eqGains.forEach((g, i) => equalizerRef.current!.setGain(i, g))
-            const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
-            equalizerRef.current.setVolume(effectiveVolume)
-            audioRef.current.volume = 1 // 볼륨은 GainNode가 제어
-            console.log('[DesktopPlayer] EQ initialized, ctx:', equalizerRef.current.audioContext.state)
-          } catch(e) {
-            console.warn('[DesktopPlayer] EQ init failed:', e)
-            equalizerRef.current = null
-          }
-        }
-
-        // EQ 있으면 audio.volume=1, 없으면 직접 볼륨 제어
-        if (equalizerRef.current) {
-          audioRef.current.volume = 1
-        } else {
-          audioRef.current.volume = isMuted ? 0 : volume
-        }
-
-        // [FIX] m4a blob에서 canplay가 발생하지 않는 경우 대비
-        // canplay + loadeddata + loadedmetadata 모두 리스닝
+        // [STEP 1] 이벤트 리스너를 load() 전에 등록!
+        // blob URL은 메모리에 있어 load() 즉시 이벤트 발생 가능
         let playStarted = false
         const tryPlay = () => {
           if (playStarted) return
@@ -375,8 +351,7 @@ export default function DesktopPlayer() {
               'EQ:', !!equalizerRef.current,
               'ctxState:', equalizerRef.current?.audioContext?.state ?? 'N/A',
               'vol:', audioRef.current.volume,
-              'readyState:', audioRef.current.readyState,
-              'paused:', audioRef.current.paused)
+              'readyState:', audioRef.current.readyState)
             audioRef.current.play()
               .then(() => console.log('[DesktopPlayer] play() OK'))
               .catch((e) => console.warn('Desktop play blocked:', e))
@@ -389,6 +364,33 @@ export default function DesktopPlayer() {
         audioRef.current.addEventListener('canplay', tryPlay)
         audioRef.current.addEventListener('loadeddata', tryPlay)
         audioRef.current.addEventListener('loadedmetadata', tryPlay)
+
+        // [STEP 2] EQ 초기화 (한번만)
+        if (!equalizerRef.current && newSrc.startsWith('blob:')) {
+          try {
+            equalizerRef.current = new Equalizer(audioRef.current)
+            eqGains.forEach((g, i) => equalizerRef.current!.setGain(i, g))
+            const effectiveVolume = (isMuted || volume < 0.01) ? 0 : volume
+            equalizerRef.current.setVolume(effectiveVolume)
+            audioRef.current.volume = 1
+            console.log('[DesktopPlayer] EQ initialized, ctx:', equalizerRef.current.audioContext.state)
+          } catch(e) {
+            console.warn('[DesktopPlayer] EQ init failed:', e)
+            equalizerRef.current = null
+          }
+        }
+
+        // EQ 있으면 audio.volume=1, 없으면 직접 볼륨 제어
+        if (equalizerRef.current) {
+          audioRef.current.volume = 1
+        } else {
+          audioRef.current.volume = isMuted ? 0 : volume
+        }
+
+        // [STEP 3] load() — 이벤트 리스너가 이미 등록된 상태에서 호출
+        audioRef.current.load()
+
+        // Safety: 이미 readyState 충분하면 즉시 재생
         if (audioRef.current.readyState >= 1) {
           tryPlay()
         }
