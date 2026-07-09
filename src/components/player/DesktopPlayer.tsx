@@ -323,8 +323,14 @@ export default function DesktopPlayer() {
         else audioRef.current.removeAttribute('crossorigin')
         audioRef.current.src = newSrc
         audioRef.current.playbackRate = playbackRate
-        audioRef.current.volume = isMuted ? 0 : volume
+        // [FIX] EQ가 이미 생성되어 있으면 audio.volume=1 유지 (볼륨은 GainNode 제어)
+        if (equalizerRef.current) {
+          audioRef.current.volume = 1
+        } else {
+          audioRef.current.volume = isMuted ? 0 : volume
+        }
         retryCountRef.current = 0
+        console.log('[DesktopPlayer] Loading src, EQ:', !!equalizerRef.current, 'volume:', audioRef.current.volume)
         audioRef.current.load()
         
         // [FIX] m4a blob에서 canplay가 발생하지 않는 경우 대비
@@ -341,8 +347,16 @@ export default function DesktopPlayer() {
             if (equalizerRef.current && equalizerRef.current.audioContext.state === 'suspended') {
               equalizerRef.current.audioContext.resume().catch(() => {})
             }
+            console.log('[DesktopPlayer] tryPlay() called —',
+              'EQ:', !!equalizerRef.current,
+              'ctxState:', equalizerRef.current?.audioContext?.state ?? 'N/A',
+              'vol:', audioRef.current.volume,
+              'readyState:', audioRef.current.readyState,
+              'paused:', audioRef.current.paused,
+              'duration:', audioRef.current.duration,
+              'src:', audioRef.current.src?.slice(0, 40))
             audioRef.current.play()
-              .then(() => console.log('[DesktopPlayer] play() resolved, readyState:', audioRef.current?.readyState))
+              .then(() => console.log('[DesktopPlayer] play() OK, paused:', audioRef.current?.paused))
               .catch((e) => console.warn('Desktop play blocked:', e))
           }
           // cleanup
