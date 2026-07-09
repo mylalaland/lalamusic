@@ -111,8 +111,8 @@ async function fetchAndCache(
   } else {
     // 진행률 불필요 시 간단히 blob으로
     const rawBlob = await audioRes.blob()
-    // blob type이 octet-stream이면 보정
-    const blob = rawBlob.type.includes('octet-stream') 
+    // 항상 파일명 기반 MIME 보정 적용 (Google Drive가 audio/x-m4a 등 비표준 MIME 반환 가능)
+    const blob = (rawBlob.type !== resolvedType)
       ? new Blob([rawBlob], { type: resolvedType })
       : rawBlob
     const blobUrl = URL.createObjectURL(blob)
