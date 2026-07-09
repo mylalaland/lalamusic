@@ -320,6 +320,7 @@ export default function DesktopPlayer() {
 
       // Standard <audio> playback path
       cleanupFallback()
+      console.log('[DesktopPlayer] Setting up audio, audioRef:', !!audioRef.current, 'src:', newSrc?.slice(0, 30))
 
       if (audioRef.current) {
         retryCountRef.current = 0
@@ -371,7 +372,9 @@ export default function DesktopPlayer() {
         }
 
         // [STEP 4] load()
+        console.log('[DesktopPlayer] Calling load(), readyState before:', audioRef.current.readyState)
         audioRef.current.load()
+        console.log('[DesktopPlayer] After load(), readyState:', audioRef.current.readyState)
 
         // [STEP 5] Safety — 이미 로드 완료되었을 경우
         if (audioRef.current.readyState >= 1) {
