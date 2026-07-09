@@ -327,16 +327,28 @@ export default function DesktopPlayer() {
         retryCountRef.current = 0
         audioRef.current.load()
         
-        const handleCanPlay = () => {
+        // [FIX] m4a blob에서 canplay가 발생하지 않는 경우 대비
+        // canplay + loadeddata 양쪽 모두 리스닝 + safety timeout
+        let playStarted = false
+        const tryPlay = () => {
+          if (playStarted) return
+          playStarted = true
           if ((track as any).initialPosition) {
             if (audioRef.current) audioRef.current.currentTime = (track as any).initialPosition
           }
           if (audioRef.current) {
             audioRef.current.play().catch((e) => console.warn('Desktop play blocked:', e))
           }
-          audioRef.current?.removeEventListener('canplay', handleCanPlay)
+          // cleanup
+          audioRef.current?.removeEventListener('canplay', tryPlay)
+          audioRef.current?.removeEventListener('loadeddata', tryPlay)
         }
-        audioRef.current.addEventListener('canplay', handleCanPlay)
+        audioRef.current.addEventListener('canplay', tryPlay)
+        audioRef.current.addEventListener('loadeddata', tryPlay)
+        // Safety: readyState가 이미 충분하면 즉시 재생 시도
+        if (audioRef.current.readyState >= 2) {
+          tryPlay()
+        }
       }
     }
 
@@ -393,7 +405,7 @@ export default function DesktopPlayer() {
       if (equalizerRef.current && equalizerRef.current.audioContext.state === 'suspended') {
         equalizerRef.current.audioContext.resume()
       }
-      if (audioRef.current.readyState >= 2) {
+      if (audioRef.current.readyState >= 1) {
         audioRef.current.play().catch((e) => console.warn("Audio play blocked by browser:", e))
       }
       // readyState < 2이면 아무것도 하지 않음 — track useEffect의 canplay가 담당

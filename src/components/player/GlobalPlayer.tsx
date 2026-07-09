@@ -590,15 +590,24 @@ export default function GlobalPlayer() {
           retryCountRef.current = 0
           audioRef.current.load()
 
-          const handleCanPlay = () => {
+          // [FIX] m4a blob에서 canplay가 발생하지 않는 경우 대비
+          let playStarted = false
+          const tryPlay = () => {
+            if (playStarted) return
+            playStarted = true
             if ((track as any).initialPosition) audioRef.current!.currentTime = (track as any).initialPosition
             if (isPlayingRef.current) {
               unlockAllAudioContexts().catch(() => {})
               audioRef.current!.play().catch((e) => console.warn('Play blocked:', e))
             }
-            audioRef.current!.removeEventListener('canplay', handleCanPlay)
+            audioRef.current?.removeEventListener('canplay', tryPlay)
+            audioRef.current?.removeEventListener('loadeddata', tryPlay)
           }
-          audioRef.current.addEventListener('canplay', handleCanPlay)
+          audioRef.current.addEventListener('canplay', tryPlay)
+          audioRef.current.addEventListener('loadeddata', tryPlay)
+          if (audioRef.current.readyState >= 2) {
+            tryPlay()
+          }
         }
       }
 
